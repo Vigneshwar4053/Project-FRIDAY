@@ -13,6 +13,7 @@ class Settings:
     ollama_think: bool = False
     database_path: Path = Path(__file__).resolve().parents[2] / "data" / "friday.db"
     recent_memory_limit: int = 20
+    sync_library_path: Path = Path(__file__).resolve().parents[2] / "native" / "sync" / "libfriday_sync.so"
 
     @property
     def system_prompt(self) -> str:
