@@ -1,4 +1,4 @@
-# FRIDAY v0.4 Phase 1 — Safe Tool Foundation
+# FRIDAY v0.4 Phase 2 — Safe File Tools
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -10,7 +10,7 @@ cybersecurity, research, planning, and automation advice.
 - Local HTTP model provider, connection/response error handling, and clean exits.
 - Requests `think: false` and displays only final answer content. The provider
   also removes embedded thinking blocks when Qwen ignores that option.
-- No tool execution, cloud APIs, or extra Python dependencies. Suggested
+- No tool execution through terminal chat, cloud APIs, or extra Python dependencies. Suggested
   commands must be run by the user. Only successful, sanitized conversation
   turns are saved; failed or interrupted generations are not saved.
 
@@ -186,9 +186,9 @@ Explicit application caller
 ```
 
 This is a standalone Python API, separate from terminal chat and model jobs.
-There are no production tools registered and no LLM-driven invocation. It does
-not add file modification, Linux commands, shell execution, or Python code
-execution. The CLI, SQLite memory, and native model synchronization stay intact.
+Tools are registered explicitly by application code; there is no LLM-driven
+invocation. Phase 2 adds bounded file tools described below, without Linux
+commands, shell execution, or Python code execution. The CLI, SQLite memory, and native model synchronization stay intact.
 
 A trusted `Tool` implementation declares an immutable `ToolSpec`: unique
 lowercase identifier, description, explicit risk, and argument schema. Schema
@@ -196,7 +196,7 @@ fields use `ArgumentSpec` with a required flag and string/integer/number/boolean
 object/array types. Validation rejects unknown fields, missing required values,
 wrong types, and boolean values used as numbers; it performs no coercion. Arrays
 and objects accept finite JSON-compatible values, without nested field schemas
-or domain/path restrictions in this phase.
+or nested domain validation. File tools separately enforce a path boundary.
 
 `ToolRequest` carries a UUID (or supplied request id), creation timestamp, and
 copied arguments. Requests, schemas, registered metadata, and result data are
@@ -234,14 +234,73 @@ policy implementations are trusted local code; application dispatch must use
 `ToolManager`. There is no dynamic loading, automatic tool discovery, audit
 persistence, subprocess invocation, `eval`, or `exec` in this package.
 
-Later v0.4 phases may add individually reviewed concrete tools, domain/path
-validation, explicit user approval, serialization/auditing, and controlled model
-integration. None is implemented by this foundation.
+Later v0.4 phases may add explicit user approval, serialization/auditing, and
+controlled model integration. None is implemented yet.
 
 Run the focused tests (purely fake/in-memory tools):
 
 ```bash
 .venv/bin/python -B -m unittest discover -s tests -p 'test_tools.py' -v
+```
+
+## Safe file tools (v0.4 Phase 2)
+
+```text
+Explicit caller -> ToolRequest -> ToolManager -> ToolRegistry
+  -> schema validation -> PermissionPolicy -> File tool
+  -> FileSystemPolicy (allowed roots + descriptor checks) -> ToolResult
+```
+
+Composition requires trusted, explicit existing directory roots; no default
+filesystem access is granted. Relative paths use the first root; absolute paths
+must stay inside one configured root. `max_file_size` defaults to 1 MiB and
+bounds both UTF-8 reads and writes. Example composition (no invocation):
+
+```python
+from friday.tools import ToolManager, ToolRegistry
+from friday.tools.files import register_file_tools
+from friday.tools.filesystem import FileSystemPolicy
+
+boundary = FileSystemPolicy(["/your/explicit/allowed/directory"], max_file_size=1024 * 1024)
+registry = ToolRegistry()
+register_file_tools(registry, boundary)
+manager = ToolManager(registry)  # invoke only via manager.execute(ToolRequest(...))
+```
+
+| Tool | Arguments | Structured output | Default permission |
+| --- | --- | --- | --- |
+| `list_directory` | `path` | path, sorted entry names/types | ALLOW |
+| `read_file` | `path` | path, UTF-8 content, byte size, encoding | ALLOW |
+| `file_info` | `path` | path, type, byte size, UTC modification time | ALLOW |
+| `write_file` | `path`, `content`, optional boolean `overwrite` | path, bytes written, overwrite intent | REQUIRE_USER_APPROVAL |
+
+The default write policy never opens or writes a file. There is no interactive
+approval flow. Tests inject an explicitly allowing policy only with temporary
+files. Existing files are protected by exclusive creation unless `overwrite`
+is explicitly true. Missing parent directories are not automatically created.
+
+Paths reject NULs, empty values and all `..` components, even traversal that
+would normalize back inside a root. Both lexical and resolved paths must be
+inside a root, using component boundaries rather than string prefixes.
+Linux descriptor-relative opens walk directory components with `O_NOFOLLOW`;
+final opens also refuse symlinks. **All symlinks are rejected for access**, even
+in-root links; directory listings may report their names/types without following
+them. Read/write targets must be regular files with a single hard link. Reads
+are bounded during I/O as well as by initial size, decode strict UTF-8, and reject
+NUL-containing binary content. FIFO/device targets cannot become read/write tools.
+Metadata omits owners, permissions, inode identifiers and link targets. Operational
+errors remain generic structured failures through the existing manager.
+
+Limits: Ubuntu/Linux filesystem APIs are required. This is not an OS sandbox
+against hostile mount changes, directory relocation by another process, or
+untrusted Python implementations. Files may change during reads; overwrites are
+not atomic or crash-safe, and an I/O failure may leave a partial file. Directory
+listing size is currently unbounded. No delete, rename, permission changes,
+subprocess execution, automatic registration in chat, or autonomous tool use is
+provided. Future work includes bounded listings, atomic writes and reviewed approval.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_file_tools.py' -v
 ```
 
 ## Tests
@@ -279,6 +338,8 @@ friday/
     registry.py           # isolated registry and metadata snapshots
     permissions.py        # allow/deny/approval policy
     manager.py            # validation, permissions, safe execution flow
+    filesystem.py         # explicit roots and descriptor-based path boundary
+    files.py              # typed list/read/info/write tools; explicit registration
   providers/base.py       # abstract ModelProvider and ProviderError
   providers/ollama.py     # standard-library HTTP adapter
   memory/

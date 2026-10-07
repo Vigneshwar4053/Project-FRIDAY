@@ -1,4 +1,4 @@
-"""Safe tool foundation; no built-in system tools or LLM dispatch."""
+"""Safe typed tool foundation; file tools require explicit registration."""
 from friday.tools.base import Tool
 from friday.tools.manager import ToolManager
 from friday.tools.models import ArgumentSpec, ArgumentType, RiskLevel, ToolRequest, ToolResult, ToolSpec, ToolStatus

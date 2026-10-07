@@ -1,4 +1,4 @@
-"""Trusted typed tool interface; this package contains no system tools."""
+"""Trusted typed tool interface; application dispatch uses ToolManager."""
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from friday.tools.models import JSONValue, ToolSpec
