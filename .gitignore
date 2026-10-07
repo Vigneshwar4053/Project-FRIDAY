@@ -25,3 +25,7 @@ logs/*
 
 # OS
 .DS_Store
+
+# Generated native libraries and objects
+*.so
+*.o

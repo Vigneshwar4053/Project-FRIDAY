@@ -1,15 +1,24 @@
 """Session conversation flow, independent of transport and terminal I/O."""
+from friday.config.settings import settings
+from friday.models import ModelManager
 from friday.memory.manager import MemoryManager
 from friday.memory.models import Session
 from friday.providers.base import ModelProvider, ProviderError
 
 
 class FridayAssistant:
-    def __init__(self, provider: ModelProvider, system_prompt: str, *,
+    def __init__(self, provider: ModelProvider | ModelManager, system_prompt: str, *,
                  memory: MemoryManager | None = None, recent_memory_limit: int = 20):
         if not isinstance(recent_memory_limit, int) or recent_memory_limit < 0:
             raise ValueError("The recent memory limit must be a nonnegative integer.")
-        self.provider = provider
+        # Accept the existing provider constructor while routing every request
+        # through the runtime. The CLI passes an explicitly configured manager.
+        if isinstance(provider, ModelManager):
+            self.model_manager = provider
+        else:
+            configured_model = getattr(provider, 'model', None)
+            model = configured_model if isinstance(configured_model, str) else settings.ollama_model
+            self.model_manager = ModelManager(provider, model)
         self.memory = memory
         self.recent_memory_limit = recent_memory_limit
         self.previous_session: Session | None = None
@@ -83,7 +92,7 @@ class FridayAssistant:
             context = self._bounded_context(context)
         pending = [self._request_system_message(context), *[dict(message) for message in context]]
         pending.append({"role": "user", "content": user_message})
-        response = self.provider.chat(pending)
+        response = self.model_manager.generate(pending)
         if not isinstance(response, str) or not response.strip():
             raise ProviderError("The model returned no final answer.")
         response = response.strip()
