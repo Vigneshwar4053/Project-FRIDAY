@@ -11,7 +11,7 @@ __pycache__/
 .env.*
 secrets/
 
-# FRIDAY local data
+# FRIDAY local data (includes SQLite database and journal/WAL sidecars)
 data/*
 !data/.gitkeep
 

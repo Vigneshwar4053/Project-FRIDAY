@@ -119,9 +119,15 @@ class OllamaTests(unittest.TestCase):
 
     def test_cli_never_displays_embedded_reasoning(self):
         import io
+        from dataclasses import replace
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from friday.config.settings import settings
         from friday.main import main
         self.reply({'message': {'content': 'synthetic private trace</think>Hello, Vigneshwar!'}})
-        with patch('builtins.input', side_effect=['hello', 'exit']), \
+        with TemporaryDirectory() as directory, \
+             patch('friday.main.settings', replace(settings, database_path=Path(directory) / 'test.db')), \
+             patch('builtins.input', side_effect=['hello', 'exit']), \
              patch('sys.stdout', new_callable=io.StringIO) as output:
             main()
         self.assertIn('FRIDAY: Hello, Vigneshwar!', output.getvalue())
