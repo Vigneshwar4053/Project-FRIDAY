@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+
+# Environment/secrets
+.env
+.env.*
+secrets/
+
+# FRIDAY local data
+data/*
+!data/.gitkeep
+
+# Logs
+*.log
+logs/*
+!logs/.gitkeep
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
