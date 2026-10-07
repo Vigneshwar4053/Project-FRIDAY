@@ -1,4 +1,4 @@
-# FRIDAY v0.3 Phase 2 — Native Model Synchronization
+# FRIDAY v0.4 Phase 1 — Safe Tool Foundation
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -177,6 +177,73 @@ execution boundary for future multi-agent/model-job execution, without adding
 those workers in this phase. POSIX waiter order is not guaranteed; Python queue
 ordering still controls synchronous scheduling.
 
+## Safe tool foundation (v0.4 Phase 1)
+
+```text
+Explicit application caller
+    -> ToolRequest -> ToolManager -> ToolRegistry
+    -> argument validation -> PermissionPolicy -> Tool -> ToolResult
+```
+
+This is a standalone Python API, separate from terminal chat and model jobs.
+There are no production tools registered and no LLM-driven invocation. It does
+not add file modification, Linux commands, shell execution, or Python code
+execution. The CLI, SQLite memory, and native model synchronization stay intact.
+
+A trusted `Tool` implementation declares an immutable `ToolSpec`: unique
+lowercase identifier, description, explicit risk, and argument schema. Schema
+fields use `ArgumentSpec` with a required flag and string/integer/number/boolean/
+object/array types. Validation rejects unknown fields, missing required values,
+wrong types, and boolean values used as numbers; it performs no coercion. Arrays
+and objects accept finite JSON-compatible values, without nested field schemas
+or domain/path restrictions in this phase.
+
+`ToolRequest` carries a UUID (or supplied request id), creation timestamp, and
+copied arguments. Requests, schemas, registered metadata, and result data are
+immutable: objects become read-only mappings and arrays become tuples. Unsupported
+values, nonfinite numbers, cycles/excessive nesting (over 64 levels), and nonstring
+object keys are rejected. `ToolRegistry` rejects duplicate names, keeps isolated
+per-instance state, returns immutable registration records on lookup, and lists
+immutable metadata in registration order.
+
+Default `RiskPermissionPolicy` decisions:
+
+| Risk | Decision |
+| --- | --- |
+| `READ_ONLY` | `ALLOW` |
+| `WRITE` | `REQUIRE_USER_APPROVAL` |
+| `EXECUTE` | `REQUIRE_USER_APPROVAL` |
+| `PRIVILEGED` | `DENY` |
+
+Policies are injectable and can inspect registered metadata and request arguments.
+Trusted application configuration can override defaults. Invalid decisions and
+policy exceptions fail closed. **Approval-required requests never execute**:
+there is no approval UI, token, or automatic retry in Phase 1.
+
+`ToolManager.execute(request)` looks up, validates, evaluates policy, and only
+then invokes the tool. Tools return structured data; the manager builds a
+`ToolResult` with status, data/error, tool/request identity, request timestamp,
+manager processing start, and finish time. Status distinguishes success, failure,
+unknown tool, invalid arguments, denial, and approval required. Tool exceptions
+produce generic failures without raw exception messages or tracebacks.
+KeyboardInterrupt/SystemExit propagate. Invalid API construction is a programmer
+error; correctly constructed requests receive structured results.
+
+This policy boundary is **not a sandbox for untrusted Python plugins**. Tool and
+policy implementations are trusted local code; application dispatch must use
+`ToolManager`. There is no dynamic loading, automatic tool discovery, audit
+persistence, subprocess invocation, `eval`, or `exec` in this package.
+
+Later v0.4 phases may add individually reviewed concrete tools, domain/path
+validation, explicit user approval, serialization/auditing, and controlled model
+integration. None is implemented by this foundation.
+
+Run the focused tests (purely fake/in-memory tools):
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_tools.py' -v
+```
+
 ## Tests
 
 ```bash
@@ -205,6 +272,13 @@ friday/
     base.py               # interface, lifecycle, context guard
     native.py             # private ctypes wrapper
     fallback.py           # standard-library lock
+  tools/
+    __init__.py           # standalone public tool API
+    base.py               # trusted Tool interface
+    models.py             # schemas, immutable requests/results, risk/status enums
+    registry.py           # isolated registry and metadata snapshots
+    permissions.py        # allow/deny/approval policy
+    manager.py            # validation, permissions, safe execution flow
   providers/base.py       # abstract ModelProvider and ProviderError
   providers/ollama.py     # standard-library HTTP adapter
   memory/
@@ -220,6 +294,6 @@ logs/.gitkeep             # reserved log directory
 ```
 
 The core depends on the provider interface rather than Ollama. Future milestones
-may add ChromaDB retrieval, a scheduler, typed tools and permissions,
+may add ChromaDB retrieval, a scheduler, reviewed system tools and interactive approval,
 coding/cybersecurity agents, research/Gemini providers, Whisper, Piper, a React UI,
 and plugins. None are implemented in this milestone.
