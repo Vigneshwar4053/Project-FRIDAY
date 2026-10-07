@@ -1,6 +1,7 @@
 """Run with: python -m friday.main."""
 from friday.config.settings import settings
 from friday.core.assistant import FridayAssistant
+from friday.models import ModelManager
 from friday.memory import MemoryManager, MemoryStorageError
 from friday.providers.base import ProviderError
 from friday.providers.ollama import OllamaProvider
@@ -11,13 +12,14 @@ def main() -> None:
         settings.ollama_base_url, settings.ollama_model,
         timeout=settings.ollama_timeout, think=settings.ollama_think,
     )
+    model_manager = ModelManager(provider, settings.ollama_model)
     print(f"{settings.assistant_name} LOCAL AI")
     print(f"Model: {settings.ollama_model}")
     print("Type exit, quit, or /bye to close. Ctrl+C also exits.\n")
     try:
         with MemoryManager(settings.database_path) as memory:
             friday = FridayAssistant(
-                provider, settings.system_prompt, memory=memory,
+                model_manager, settings.system_prompt, memory=memory,
                 recent_memory_limit=settings.recent_memory_limit,
             )
             try:

@@ -1,4 +1,4 @@
-# FRIDAY v0.2 — Persistent Memory
+# FRIDAY v0.3 Phase 1 — Python Model Runtime
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -77,6 +77,44 @@ PY
 ```
 
 
+## Model runtime (Phase 1)
+
+```text
+FridayAssistant -> ModelManager -> ModelProvider -> Ollama
+```
+
+`ModelJob` is an in-memory request with a UUID, model name, copied message
+snapshot, integer priority, status, result/error, and UTC lifecycle timestamps.
+Jobs transition from pending to running, then completed or failed. They are
+not saved in SQLite. The manager retains only the last executed job plus jobs
+still waiting in its queue; callers may retain job records explicitly.
+
+`ModelJobQueue` is deterministic: **lower numeric values mean higher priority**;
+equal priorities run in enqueue order (FIFO). Priority is captured at enqueue
+time. `execute_next()` drains in that order; `execute_job(job)` explicitly
+executes a supplied pending job immediately and removes it from the queue if
+present. The assistant's `generate()` convenience call queues and immediately
+executes its own job, leaving unrelated queued jobs waiting.
+
+`ModelRegistry` tracks registered names, a default, a selected (`current_model`)
+name, and the last model used for a provider call (`active_model`). The first
+registered name becomes default and selected. Changing the default does not
+change the selection. Active is runtime metadata, not a claim that Ollama has
+loaded a model. Phase 1 binds one provider to one model; requesting a different
+model fails explicitly rather than silently using the wrong provider.
+
+The CLI constructs the manager explicitly. The assistant's existing provider
+constructor remains compatible by wrapping that provider in a manager.
+Provider errors become failed jobs with a finish timestamp; `generate()` raises
+`ProviderError` so the CLI keeps its existing error behavior. Unexpected errors
+use a generic message. Interrupts mark the job failed before being re-raised.
+Only successful final answers proceed to conversation persistence. Ollama HTTP
+handling and reasoning sanitization remain in the provider.
+
+Execution remains single-threaded and synchronous. The queue supplies **no
+cross-thread/process synchronization**. A native C synchronization boundary
+with a binary semaphore is planned for Phase 2; none is implemented here.
+
 ## Tests
 
 ```bash
@@ -94,6 +132,12 @@ friday/
   main.py                 # terminal I/O and composition
   config/settings.py      # centralized configuration and identity
   core/assistant.py       # conversation and successful-turn history
+  models/
+    __init__.py
+    job.py                # in-memory requests and lifecycle states
+    queue.py              # priority/FIFO pending jobs
+    registry.py           # model names and selection metadata
+    manager.py            # synchronous execution via ModelProvider
   providers/base.py       # abstract ModelProvider and ProviderError
   providers/ollama.py     # standard-library HTTP adapter
   memory/
@@ -110,4 +154,4 @@ logs/.gitkeep             # reserved log directory
 The core depends on the provider interface rather than Ollama. Future milestones
 may add ChromaDB retrieval, a scheduler, typed tools and permissions,
 coding/cybersecurity agents, research/Gemini providers, Whisper, Piper, a React UI,
-and plugins. None are implemented in v0.2.
+and plugins. None are implemented in this milestone.
