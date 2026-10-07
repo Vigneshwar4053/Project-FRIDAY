@@ -1,4 +1,4 @@
-# FRIDAY v0.4 Phase 3 — Safe Linux/System Tools
+# FRIDAY v0.4 Phase 4 — Controlled Python Computation
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -365,6 +365,60 @@ integration, interactive approval or persistent audit log. Run focused tests:
 .venv/bin/python -B -m unittest discover -s tests -p 'test_system_tools.py' -v
 ```
 
+## Controlled computation (v0.4 Phase 4)
+
+```text
+ToolRequest -> ToolManager -> schema validation -> PermissionPolicy
+  -> CalculateTool -> predefined bounded numerical operation -> ToolResult
+```
+
+Explicitly register with `register_computation_tools(registry)` from
+`friday.tools.computation`, then submit `ToolRequest("calculate", arguments)`
+through `ToolManager`. The tool is `READ_ONLY` (default `ALLOW`), but injected
+denial/approval decisions still prevent execution. There is no chat integration.
+
+Arguments are exactly `operation` (string) and `values` (numeric array).
+Results contain `operation`, `result`, and `input_count`.
+
+| Operations | Meaning/arity |
+| --- | --- |
+| `add`, `sum` | Sum all values; only `sum` permits empty input (zero) |
+| `subtract`, `divide` | Exactly two values, in supplied order |
+| `multiply` | Product of one or more values |
+| `power` | Exactly two values: base, exponent; bounded real floating-point power |
+| `mean`, `median`, `min`, `max` | One or more values |
+| `count`, `sort` | Count or ascending numeric sort; empty input allowed |
+| `percentage` | Exactly two values: part, whole; `(part / whole) * 100` |
+
+Named limits in `computation.py`: at most **1,000 values**, absolute numeric
+input/result magnitude at most **10^12**, absolute exponent at most **100**.
+Only exact built-in integers/floats are accepted, never booleans, strings,
+objects or nested values. NaN/infinity are rejected by the existing immutable
+`ToolRequest` constructor before dispatch. Missing/extra/wrongly typed fields
+return `INVALID_ARGUMENTS`; invalid operations, operand domains, arity, limits,
+zero denominators and unsafe results return generic `FAILED` results through
+the manager. Invalid request construction raises `ValueError`, as in Phase 1.
+
+Power uses fixed-size floating-point math rather than unbounded integer
+exponentiation. Multiplication checks every intermediate result, so even a
+later zero or small factor cannot bypass the magnitude limit. Sort output is
+bounded by the input-count limit. All scalar results must remain finite and
+bounded. Python numerical precision applies; exact decimal financial arithmetic,
+complex numbers, expression parsing and arbitrary precision are not provided.
+
+Users choose names from a fixed operation whitelist, not source code, modules,
+functions or scripts. The computation module has no filesystem, process,
+network, environment or dynamic-import access. It does not evaluate, compile
+or execute supplied strings. Code-shaped strings are ordinary invalid operands.
+This is a narrow capability, not an untrusted-code sandbox or Python REPL.
+Existing request snapshot creation occurs before tool-level count limits; a
+future routing/transport layer must also bound incoming payloads before copying.
+Phase 5 will address controlled routing/CLI integration; it is not implemented.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_computation_tools.py' -v
+```
+
 ## Tests
 
 ```bash
@@ -403,6 +457,7 @@ friday/
     filesystem.py         # explicit roots and descriptor-based path boundary
     files.py              # typed list/read/info/write tools; explicit registration
     system.py             # narrow read-only Linux tools; explicit registration
+    computation.py        # bounded predefined numeric operations
   providers/base.py       # abstract ModelProvider and ProviderError
   providers/ollama.py     # standard-library HTTP adapter
   memory/
