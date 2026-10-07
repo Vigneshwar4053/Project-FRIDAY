@@ -1,4 +1,4 @@
-# FRIDAY v0.4 Phase 2 — Safe File Tools
+# FRIDAY v0.4 Phase 3 — Safe Linux/System Tools
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -303,6 +303,68 @@ provided. Future work includes bounded listings, atomic writes and reviewed appr
 .venv/bin/python -B -m unittest discover -s tests -p 'test_file_tools.py' -v
 ```
 
+## Safe Linux/system tools (v0.4 Phase 3)
+
+```text
+Explicit caller -> ToolRequest -> ToolManager -> schema validation
+  -> PermissionPolicy -> narrow system Tool -> ToolResult
+                     disk_usage -> FileSystemPolicy -> opened descriptor
+```
+
+All five tools are `READ_ONLY` and default to `ALLOW`. Register explicitly with
+`register_system_tools(registry, filesystem_policy)` from `friday.tools.system`,
+then invoke only through `ToolManager.execute`. Registration does not connect
+anything to chat, change permissions, or broaden the supplied filesystem roots.
+
+| Tool | Arguments | Data source and output |
+| --- | --- | --- |
+| `system_info` | none | `os.uname` and `sys`: OS, kernel, architecture, hostname, Python version/implementation |
+| `memory_info` | none | fixed `/proc/meminfo`: total/available/used and swap counters, in bytes |
+| `cpu_info` | none | `os.cpu_count`, `os.uname`, `os.getloadavg`, fixed `/proc/cpuinfo`: logical count, architecture, bounded model label, three load averages |
+| `disk_usage` | `path` | `os.fstatvfs` on a boundary-checked descriptor: total, used and user-available free bytes |
+| `process_status` | `name` | fixed `/proc/<numeric-pid>/comm`: exact-name running flag/count, incomplete flag and visible-process scope |
+
+Narrow Python APIs avoid command parsing and arbitrary execution. No subprocess,
+shell, process signals, service changes, package management, environment reads,
+command-line reads or generic command tool is provided. System tools return
+selected fields, never raw pseudo-file contents, usernames, process IDs or
+credentials. Hostname and CPU model are deliberately exposed by their specific
+capabilities; read-only status is not a guarantee that information is non-sensitive.
+
+`disk_usage` uses the same explicit roots, traversal rejection and no-symlink
+rules as file tools. `fstatvfs` queries the opened file/directory rather than
+reopening a validated pathname, avoiding a second path-security mechanism.
+Paths outside roots fail before querying capacity. Capacity describes the entire
+filesystem containing the allowed path, not the size of the allowed subtree.
+Reserved blocks mean `used + free` need not equal `total`.
+
+Memory reads are capped at 64 KiB, with strict ASCII parsing of selected kB
+counters and consistency checks. Total is required; missing available memory
+means available/used are null, rather than using an unreliable estimate. Missing
+swap counters produce null swap fields. Malformed selected counters, missing or
+inaccessible meminfo fail through the manager's generic structured error.
+CPU parsing examines at most the first 64 KiB and returns a model label of at
+most 256 characters. Missing model/load/count information is null; load averages
+are OS averages, not a CPU utilization percentage.
+
+Process names must be 1–15 ASCII letters/digits/underscore/dot/hyphen, starting
+with a letter or digit. This is exact `comm` matching, not a substring, executable
+path or command-line search. Invalid name syntax fails before `/proc` scanning;
+wrong declared argument types fail at manager validation. Reads use pinned
+directory descriptors and no-follow flags, at most 64 bytes per comm. Processes
+that vanish or become inaccessible are skipped and set `incomplete=true`.
+The count covers visible processes in the current PID namespace; permissions,
+`hidepid`, concurrent exits/renames and kernel name truncation limit certainty.
+A false running flag is not proof of global absence. Matching zombie entries may
+still be counted. This is a snapshot, not monitoring or process control.
+
+The Phase 2 mount/hostile-filesystem limitations still apply. There is no LLM
+integration, interactive approval or persistent audit log. Run focused tests:
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_system_tools.py' -v
+```
+
 ## Tests
 
 ```bash
@@ -340,6 +402,7 @@ friday/
     manager.py            # validation, permissions, safe execution flow
     filesystem.py         # explicit roots and descriptor-based path boundary
     files.py              # typed list/read/info/write tools; explicit registration
+    system.py             # narrow read-only Linux tools; explicit registration
   providers/base.py       # abstract ModelProvider and ProviderError
   providers/ollama.py     # standard-library HTTP adapter
   memory/
