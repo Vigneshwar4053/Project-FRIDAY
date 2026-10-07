@@ -1,5 +1,6 @@
-"""Central configuration for FRIDAY Core v0.1."""
+"""Central configuration for FRIDAY v0.2."""
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -10,6 +11,8 @@ class Settings:
     ollama_model: str = "qwen3:4b"
     ollama_timeout: float = 300
     ollama_think: bool = False
+    database_path: Path = Path(__file__).resolve().parents[2] / "data" / "friday.db"
+    recent_memory_limit: int = 20
 
     @property
     def system_prompt(self) -> str:

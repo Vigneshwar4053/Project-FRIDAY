@@ -1,4 +1,10 @@
 import io
+from dataclasses import replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from friday.config.settings import settings
+from friday.memory import MemoryManager
 import unittest
 from unittest.mock import patch
 
@@ -8,7 +14,9 @@ from friday.providers.base import ProviderError
 
 class CLITests(unittest.TestCase):
     def run_cli(self, inputs, response='Hello'):
-        with patch('friday.main.OllamaProvider') as provider, \
+        with TemporaryDirectory() as directory, \
+             patch('friday.main.settings', replace(settings, database_path=Path(directory) / 'test.db')), \
+             patch('friday.main.OllamaProvider') as provider, \
              patch('builtins.input', side_effect=inputs), \
              patch('sys.stdout', new_callable=io.StringIO) as output:
             if isinstance(response, BaseException):
@@ -16,6 +24,8 @@ class CLITests(unittest.TestCase):
             else:
                 provider.return_value.chat.return_value = response
             main()
+            with MemoryManager(Path(directory) / 'test.db') as memory:
+                self.assertIsNotNone(memory.get_most_recent_session().ended_at)
             return output.getvalue(), provider.return_value.chat.call_count
 
     def test_exit_aliases(self):
