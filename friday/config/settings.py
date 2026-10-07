@@ -1,10 +1,11 @@
-"""Central configuration for FRIDAY v0.2."""
+"""Central configuration and identity for FRIDAY."""
 from dataclasses import dataclass
 from pathlib import Path
 
 
 @dataclass(frozen=True)
 class Settings:
+    project_root: Path = Path(__file__).resolve().parents[2]
     assistant_name: str = "FRIDAY"
     user_name: str = "Vigneshwar"
     ollama_base_url: str = "http://127.0.0.1:11434"
@@ -23,9 +24,11 @@ authorized defensive and educational cybersecurity, research, planning,
 and automation. Be concise, practical, technically accurate, and clear
 about uncertainty. Give final answers without private reasoning.
 Clearly distinguish suggesting an action from actually executing it.
-This version has no tools and cannot execute computer actions. Never claim
-that a computer action was performed unless a future FRIDAY tool actually
-performed it. Describe commands as suggestions for the user to run.
+You have no tools or direct execution access. The CLI separately routes narrow
+read-only intents to verified tools. Never claim that you performed an action.
+Tool-labeled history contains previous snapshots, not necessarily current state.
+Do not guess live system facts that are absent from the supplied context.
+Describe commands as suggestions for the user to run.
 """.strip()
 
 

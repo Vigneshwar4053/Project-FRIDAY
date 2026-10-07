@@ -1,5 +1,9 @@
 """Session conversation flow, independent of transport and terminal I/O."""
 from friday.config.settings import settings
+from friday.tools.models import ToolRequest
+from friday.tools.manager import ToolManager
+from friday.tools.presenter import ToolPresenter
+from friday.tools.router import MAX_ROUTED_MESSAGE_LENGTH, ToolRouter
 from friday.models import ModelManager
 from friday.memory.manager import MemoryManager
 from friday.memory.models import Session
@@ -8,7 +12,9 @@ from friday.providers.base import ModelProvider, ProviderError
 
 class FridayAssistant:
     def __init__(self, provider: ModelProvider | ModelManager, system_prompt: str, *,
-                 memory: MemoryManager | None = None, recent_memory_limit: int = 20):
+                 memory: MemoryManager | None = None, recent_memory_limit: int = 20,
+                 tool_router: ToolRouter | None = None, tool_manager: ToolManager | None = None,
+                 tool_presenter: ToolPresenter | None = None):
         if not isinstance(recent_memory_limit, int) or recent_memory_limit < 0:
             raise ValueError("The recent memory limit must be a nonnegative integer.")
         # Accept the existing provider constructor while routing every request
@@ -19,6 +25,11 @@ class FridayAssistant:
             configured_model = getattr(provider, 'model', None)
             model = configured_model if isinstance(configured_model, str) else settings.ollama_model
             self.model_manager = ModelManager(provider, model)
+        if (tool_router is None) != (tool_manager is None):
+            raise ValueError("Router and tool manager must be supplied together.")
+        self.tool_router = tool_router
+        self.tool_manager = tool_manager
+        self.tool_presenter = tool_presenter if tool_presenter is not None else ToolPresenter()
         self.memory = memory
         self.recent_memory_limit = recent_memory_limit
         self.previous_session: Session | None = None
@@ -84,6 +95,10 @@ class FridayAssistant:
             self.memory.end_session(self.session_id)
 
     def respond(self, user_message: str) -> str:
+        route = self.tool_router.route(user_message) if self.tool_router is not None else None
+        if route is not None and len(user_message) > MAX_ROUTED_MESSAGE_LENGTH:
+            # Do not copy/store an oversized rejected message in history or SQLite.
+            return route.message
         user_message = user_message.strip()
         if not user_message:
             raise ValueError("A message cannot be blank.")
@@ -92,7 +107,14 @@ class FridayAssistant:
             context = self._bounded_context(context)
         pending = [self._request_system_message(context), *[dict(message) for message in context]]
         pending.append({"role": "user", "content": user_message})
-        response = self.model_manager.generate(pending)
+        if route is not None and route.matched:
+            if route.message is not None:
+                response = route.message
+            else:
+                request = ToolRequest(route.tool_name, route.arguments)
+                response = self.tool_presenter.format(self.tool_manager.execute(request))
+        else:
+            response = self.model_manager.generate(pending)
         if not isinstance(response, str) or not response.strip():
             raise ProviderError("The model returned no final answer.")
         response = response.strip()

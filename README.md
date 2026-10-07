@@ -1,4 +1,4 @@
-# FRIDAY v0.4 Phase 4 — Controlled Python Computation
+# FRIDAY v0.4 Phase 5 — Safe Tool Routing + CLI Integration
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -10,7 +10,7 @@ cybersecurity, research, planning, and automation advice.
 - Local HTTP model provider, connection/response error handling, and clean exits.
 - Requests `think: false` and displays only final answer content. The provider
   also removes embedded thinking blocks when Qwen ignores that option.
-- No tool execution through terminal chat, cloud APIs, or extra Python dependencies. Suggested
+- Deterministic read-only tools through terminal chat; no cloud APIs or extra Python dependencies. Suggested
   commands must be run by the user. Only successful, sanitized conversation
   turns are saved; failed or interrupted generations are not saved.
 
@@ -185,10 +185,11 @@ Explicit application caller
     -> argument validation -> PermissionPolicy -> Tool -> ToolResult
 ```
 
-This is a standalone Python API, separate from terminal chat and model jobs.
-Tools are registered explicitly by application code; there is no LLM-driven
+The typed tool API is separate from model jobs. The CLI explicitly registers
+tools and routes supported user intents deterministically; there is no LLM-driven
 invocation. Phase 2 adds bounded file tools described below, without Linux
-commands, shell execution, or Python code execution. The CLI, SQLite memory, and native model synchronization stay intact.
+commands, shell execution, or Python code execution. SQLite memory and native
+model synchronization stay intact.
 
 A trusted `Tool` implementation declares an immutable `ToolSpec`: unique
 lowercase identifier, description, explicit risk, and argument schema. Schema
@@ -296,7 +297,7 @@ against hostile mount changes, directory relocation by another process, or
 untrusted Python implementations. Files may change during reads; overwrites are
 not atomic or crash-safe, and an I/O failure may leave a partial file. Directory
 listing size is currently unbounded. No delete, rename, permission changes,
-subprocess execution, automatic registration in chat, or autonomous tool use is
+subprocess execution or autonomous tool use is
 provided. Future work includes bounded listings, atomic writes and reviewed approval.
 
 ```bash
@@ -314,7 +315,7 @@ Explicit caller -> ToolRequest -> ToolManager -> schema validation
 All five tools are `READ_ONLY` and default to `ALLOW`. Register explicitly with
 `register_system_tools(registry, filesystem_policy)` from `friday.tools.system`,
 then invoke only through `ToolManager.execute`. Registration does not connect
-anything to chat, change permissions, or broaden the supplied filesystem roots.
+anything to chat by itself, change permissions, or broaden the supplied filesystem roots.
 
 | Tool | Arguments | Data source and output |
 | --- | --- | --- |
@@ -358,8 +359,8 @@ The count covers visible processes in the current PID namespace; permissions,
 A false running flag is not proof of global absence. Matching zombie entries may
 still be counted. This is a snapshot, not monitoring or process control.
 
-The Phase 2 mount/hostile-filesystem limitations still apply. There is no LLM
-integration, interactive approval or persistent audit log. Run focused tests:
+The Phase 2 mount/hostile-filesystem limitations still apply. There is no model-driven
+tool invocation, interactive approval or persistent audit log. Run focused tests:
 
 ```bash
 .venv/bin/python -B -m unittest discover -s tests -p 'test_system_tools.py' -v
@@ -375,7 +376,7 @@ ToolRequest -> ToolManager -> schema validation -> PermissionPolicy
 Explicitly register with `register_computation_tools(registry)` from
 `friday.tools.computation`, then submit `ToolRequest("calculate", arguments)`
 through `ToolManager`. The tool is `READ_ONLY` (default `ALLOW`), but injected
-denial/approval decisions still prevent execution. There is no chat integration.
+denial/approval decisions still prevent execution. Phase 5 adds narrow chat routing.
 
 Arguments are exactly `operation` (string) and `values` (numeric array).
 Results contain `operation`, `result`, and `input_count`.
@@ -413,10 +414,84 @@ or execute supplied strings. Code-shaped strings are ordinary invalid operands.
 This is a narrow capability, not an untrusted-code sandbox or Python REPL.
 Existing request snapshot creation occurs before tool-level count limits; a
 future routing/transport layer must also bound incoming payloads before copying.
-Phase 5 will address controlled routing/CLI integration; it is not implemented.
+Phase 5 routing bounds incoming text and numeric payloads before request creation.
 
 ```bash
 .venv/bin/python -B -m unittest discover -s tests -p 'test_computation_tools.py' -v
+```
+
+## Safe routing and CLI integration (v0.4 Phase 5)
+
+```text
+CLI user message -> FridayAssistant -> deterministic ToolRouter
+    matched -> ToolRequest -> ToolManager -> schema/permission checks -> Tool
+            -> ToolResult -> deterministic ToolPresenter -> conversation history
+    unmatched -> existing ModelManager -> ModelProvider/Qwen -> conversation history
+```
+
+The production CLI composes a fresh registry, file/system/computation tools,
+default permission policy, router and presenter. `settings.project_root` is an
+explicit absolute project path derived from the installed repository location,
+independent of working directory and user text. It is the sole allowed file root.
+File-size and Phase 2 descriptor/no-symlink protections still apply. Direct
+`FridayAssistant` construction without injected routing stays compatible.
+
+Supported narrow routes (case-insensitive intent phrases, preserved file paths):
+
+| Intent | Examples | Tool |
+| --- | --- | --- |
+| Memory | `check my RAM`, `show memory usage`, `how much RAM is available`, `check swap` | `memory_info` |
+| System | `system info`, `what OS am I running`, `show kernel information`, `what architecture is this machine` | `system_info` |
+| CPU | `check CPU`, `show CPU information`, `what processor am I using`, `system load` | `cpu_info` |
+| Project listing | `what files are in this project?`, `list project files`, `show files in the project` | `list_directory` |
+| Read | `read README.md`, `show friday/models/manager.py`, `open tests/test_tools.py` | `read_file` |
+| Disk | `check disk space`, `how much disk space is available?`, `disk usage for this project` | `disk_usage` |
+| Process | `is ollama running?`, `check ollama process`, `is code running?` | `process_status` |
+| Calculation | `calculate the mean of 10, 20, 30`, `add 10,20,30`, `median of 5,1,9`, `what is 25 percent of 200` | `calculate` |
+
+Numeric routes support the Phase 4 operation names and comma-separated signed
+real/scientific numeric literals. Subtract/divide/power/percentage still require
+exactly two operands. No expressions are evaluated. Read requests accept a single
+unquoted token containing a dot or slash; spaces in filenames, pronouns and
+ambiguous compound requests are not guessed. Absolute and traversal read requests
+are recognized but rejected by the file boundary. Disk/list routes always use the
+configured project root; arbitrary user-provided disk paths are not routed.
+
+**Unmatched normal conversation uses Qwen. Matched tool failures never do.**
+The presenter formats actual results directly, with a `[Tool: name]` source label.
+It does not ask Qwen to rewrite live facts. Failures display the actual status;
+permission denials and approval-required results remain final responses for that
+turn. Selected write verbs and generic `run/call/execute tool ...` syntax are
+blocked with an explicit not-enabled/approval message. `write_file` stays registered
+with default approval-required permission but is excluded from the router allowlist.
+There is no model-output dispatch protocol or automatic approval.
+
+Input is bounded to 4,096 characters **before router parsing and ToolRequest
+creation**; over-limit text is rejected without storing it in conversation memory.
+Parsed values are capped at 1,000, with numeric tokens at most 32 characters, and
+nonfinite values rejected before requests are copied. Code/shell-shaped numeric
+payloads are blocked; ordinary ambiguous calculation prose falls back to chat.
+The existing numeric magnitude/exponent limits remain authoritative in the tool.
+
+Formatted tool responses (including safe failure/block messages) and their user
+messages are saved through the existing atomic `save_turn` path. Raw results,
+request identifiers, internal policy metadata and routing objects are not persisted as
+conversation text. Tool-labelled historical replies are **past snapshots**, not
+proof of current system state. Tool replies follow the same restored/bounded
+conversation handling as chat; routed queries do not acquire the model semaphore.
+
+Presentation escapes terminal controls and limits display to 12,000 characters,
+with directory listings capped at 100 displayed entries. Files within the allowed
+root may contain sensitive information; this is a local assistant, not a secrets
+filter. Underlying Phase 2 directory enumeration is still unbounded. There is no
+semantic intent model, autonomous loop, general command parser, interactive
+approval or tool auditing. Broad synonyms and unsupported path syntax may use
+normal chat, whose suggestions do not execute. A future phase can expand routes
+and approval after review.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_tool_routing.py' -v
+.venv/bin/python -m friday.main
 ```
 
 ## Tests
@@ -458,6 +533,8 @@ friday/
     files.py              # typed list/read/info/write tools; explicit registration
     system.py             # narrow read-only Linux tools; explicit registration
     computation.py        # bounded predefined numeric operations
+    router.py             # bounded deterministic intents and read-only allowlist
+    presenter.py          # deterministic bounded tool response formatting
   providers/base.py       # abstract ModelProvider and ProviderError
   providers/ollama.py     # standard-library HTTP adapter
   memory/
