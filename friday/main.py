@@ -1,5 +1,6 @@
 """Run with: python -m friday.main."""
 from contextlib import closing
+from pathlib import Path
 from friday.sync import create_synchronization, SynchronizationError
 from friday.config.settings import settings
 from friday.core.assistant import FridayAssistant
@@ -13,19 +14,32 @@ from friday.tools.files import register_file_tools
 from friday.tools.system import register_system_tools
 from friday.tools.computation import register_computation_tools
 from friday.tools.router import ToolRouter
+from friday.tools.access import CLIFileApproval, FilesystemAccess
+from friday.tools.grants import PermissionStore, approved_folder
+from friday.tools.sensitive import SensitivePaths
 
 
-def create_tool_runtime(configuration):
+def create_tool_runtime(configuration, *, filesystem_approval=None):
     """Production composition, with explicit project roots and isolated registries."""
+    permission_path = Path(configuration.filesystem_permission_store_path or
+                           configuration.project_root / 'data' / 'permissions' / 'grants.json').expanduser()
+    sensitive = SensitivePaths([permission_path.parent, configuration.database_path,
+        *[str(configuration.database_path) + suffix for suffix in ('-wal', '-shm', '-journal')]])
+    store = PermissionStore(permission_path, sensitive)
+    project_root = approved_folder(str(configuration.project_root), sensitive).folder
+    read_roots = [approved_folder(str(root), sensitive).folder
+                  for root in configuration.filesystem_read_roots]
     boundary = FileSystemPolicy(
-        [configuration.project_root, *configuration.filesystem_read_roots],
-        write_roots=[configuration.project_root],
-        max_directory_entries=configuration.filesystem_max_directory_entries)
+        [project_root, *read_roots],
+        write_roots=[project_root],
+        max_directory_entries=configuration.filesystem_max_directory_entries,
+        sensitive_paths=sensitive, grant_store=store)
     registry = ToolRegistry()
     register_file_tools(registry, boundary)
     register_system_tools(registry, boundary)
     register_computation_tools(registry)
-    return ToolManager(registry), ToolRouter(configuration.project_root)
+    access = FilesystemAccess(boundary, store, filesystem_approval)
+    return ToolManager(registry, filesystem_access=access), ToolRouter(configuration.project_root)
 
 
 def main() -> None:
@@ -43,7 +57,11 @@ def main() -> None:
                 print(synchronization.fallback_reason)
             with ModelManager(provider, settings.ollama_model, synchronization=synchronization) as model_manager, \
                  MemoryManager(settings.database_path) as memory:
-                tool_manager, tool_router = create_tool_runtime(settings)
+                try:
+                    tool_manager, tool_router = create_tool_runtime(settings, filesystem_approval=CLIFileApproval())
+                except (OSError, ValueError, RuntimeError):
+                    print('Filesystem authorization configuration is unavailable; exiting safely.')
+                    return
                 friday = FridayAssistant(
                     model_manager, settings.system_prompt, memory=memory,
                     recent_memory_limit=settings.recent_memory_limit,

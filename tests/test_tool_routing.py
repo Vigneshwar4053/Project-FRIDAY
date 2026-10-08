@@ -168,7 +168,7 @@ class RoutingTests(unittest.TestCase):
         self.assertLess(len(response), MAX_PRESENTED_CHARACTERS + 100)
         self.assertIn('truncated', response)
 
-    def test_persist_only_user_and_presented_response(self):
+    def test_filesystem_responses_are_not_persisted(self):
         with MemoryManager(self.configuration.database_path) as memory:
             assistant = FridayAssistant(self.assistant.model_manager, settings.system_prompt,
                 memory=memory, tool_router=self.router, tool_manager=self.manager)
@@ -176,12 +176,13 @@ class RoutingTests(unittest.TestCase):
             failure = assistant.respond('read missing.txt')
             assistant.end_session()
             messages = memory.get_recent_messages(10)
-            self.assertEqual([m.content for m in messages], ['read README.md', response, 'read missing.txt', failure])
-            self.assertEqual([m.role for m in messages], ['user', 'assistant', 'user', 'assistant'])
+            self.assertIn('Actual project text', response)
+            self.assertIn('FAILED', failure)
+            self.assertEqual(messages, [])
         with MemoryManager(self.configuration.database_path) as memory:
             restored = FridayAssistant(self.assistant.model_manager, settings.system_prompt, memory=memory,
                                       tool_router=self.router, tool_manager=self.manager)
-            self.assertEqual(restored.messages[2]['content'], response)
+            self.assertEqual(len(restored.messages), 1)
             restored.end_session()
 
     def test_optional_constructor_backwards_compatible_and_pairing(self):

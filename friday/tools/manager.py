@@ -1,5 +1,6 @@
 """Synchronous validation -> permission -> execution; errors fail closed."""
 from collections.abc import Mapping
+from contextlib import nullcontext
 from friday.tools.models import ArgumentType, ToolRequest, ToolResult, ToolSpec, ToolStatus, _now
 from friday.tools.permissions import PermissionDecision, PermissionPolicy, RiskPermissionPolicy
 from friday.tools.registry import ToolRegistry
@@ -29,9 +30,10 @@ def _valid_arguments(spec: ToolSpec, arguments: Mapping) -> bool:
 
 
 class ToolManager:
-    def __init__(self, registry: ToolRegistry, policy: PermissionPolicy | None = None):
+    def __init__(self, registry: ToolRegistry, policy: PermissionPolicy | None = None, *, filesystem_access=None):
         self.registry = registry
         self.policy = policy if policy is not None else RiskPermissionPolicy()
+        self.filesystem_access = filesystem_access
 
     def execute(self, request: ToolRequest) -> ToolResult:
         if not isinstance(request, ToolRequest):
@@ -59,7 +61,10 @@ class ToolManager:
         if decision is not PermissionDecision.ALLOW:
             return result(ToolStatus.FAILED, error='Tool permission policy returned an invalid decision.')
         try:
-            data = entry.tool.execute(request.arguments)
+            authorization = (self.filesystem_access.execution(request)
+                             if self.filesystem_access is not None else nullcontext())
+            with authorization:
+                data = entry.tool.execute(request.arguments)
             return result(ToolStatus.SUCCESS, data=data)
         except Exception:
             # Neither exception messages nor traceback details become results.

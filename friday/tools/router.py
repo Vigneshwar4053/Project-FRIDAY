@@ -22,10 +22,13 @@ class RouteDecision:
     tool_name: str | None = None
     arguments: Mapping[str, JSONValue] = field(default_factory=lambda: MappingProxyType({}))
     message: str | None = None
+    permission_command: str | None = None
 
     def __post_init__(self):
         if self.tool_name is not None and self.tool_name not in ROUTABLE_TOOLS:
             raise ValueError('Tool is not routable.')
+        if self.permission_command not in {None, 'show', 'revoke', 'authorize'}:
+            raise ValueError('Unsupported filesystem permission command.')
         # Router builds only bounded scalar arguments or immutable numeric tuples.
         object.__setattr__(self, 'arguments', MappingProxyType(dict(self.arguments)))
 
@@ -39,6 +42,15 @@ class ToolRouter:
             return RouteDecision(True, message='Request is too long; maximum is 4096 characters.')
         text = message.strip().rstrip('?').strip()
         normalized = ' '.join(text.lower().split())
+        if normalized in {'show authorized folders', 'list authorized folders'}:
+            return RouteDecision(True, permission_command='show')
+        permission = re.fullmatch(r'(revoke\s+access\s+to|always\s+allow)\s+(.+)', text,
+                                  re.IGNORECASE | re.DOTALL)
+        if permission:
+            return RouteDecision(True, arguments={'path': permission.group(2)},
+                                 permission_command='revoke' if permission.group(1).split()[0].lower() == 'revoke' else 'authorize')
+        if normalized in {'revoke access to', 'always allow'}:
+            return RouteDecision(True, permission_command='revoke' if normalized.startswith('revoke') else 'authorize')
         routes = {
             'memory_info': {'check my ram', 'show memory usage', 'how much ram is available', 'check swap'},
             'system_info': {'system info', 'what os am i running', 'show kernel information', 'what architecture is this machine'},

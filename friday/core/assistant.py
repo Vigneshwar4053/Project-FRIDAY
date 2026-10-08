@@ -1,5 +1,6 @@
 """Session conversation flow, independent of transport and terminal I/O."""
 from friday.config.settings import settings
+from friday.core.file_context import TemporaryFileContext, TEMPORARY_CONTEXT_INSTRUCTIONS
 from friday.tools.models import ToolRequest
 from friday.tools.manager import ToolManager
 from friday.tools.presenter import ToolPresenter
@@ -35,6 +36,7 @@ class FridayAssistant:
         self.previous_session: Session | None = None
         self.session_id: int | None = None
         self._restored_message_count = 0
+        self.file_context = TemporaryFileContext()
         self.messages: list[dict[str, str]] = [
             {"role": "system", "content": system_prompt}
         ]
@@ -42,11 +44,42 @@ class FridayAssistant:
         if memory is not None:
             self.previous_session = memory.get_most_recent_session()
             recent = memory.get_recent_messages(recent_memory_limit)
-            self.messages.extend(self._bounded_context([
+            self.messages.extend(self._bounded_context(self._private_history_filtered([
                 {"role": message.role, "content": message.content} for message in recent
-            ]))
+            ])))
             self._restored_message_count = len(self.messages) - 1
             self.session_id = memory.start_session().id
+
+    def _private_history_filtered(self, messages):
+        """Exclude legacy filesystem turns from restored context; leave SQLite intact."""
+        filtered = []
+        index = 0
+        private_pending = False
+        while index < len(messages):
+            message = messages[index]
+            if message['role'] == 'user':
+                route = self.tool_router.route(message['content']) if self.tool_router else None
+                following = messages[index + 1] if index + 1 < len(messages) else None
+                private = (route is not None and (route.permission_command is not None or
+                           route.message is not None or
+                           route.tool_name in {'read_file', 'list_directory'}))
+                private = private or (following is not None and following['role'] == 'assistant' and
+                    following['content'].startswith(('[Tool: read_file]', '[Tool: list_directory]',
+                                                     '[Temporary file context; not saved]')))
+                private = private or (following is not None and following['role'] == 'assistant' and
+                    following['content'].startswith('[Tool:') and
+                    following['content'].split('\n', 1)[-1].startswith(
+                        ('DENIED:', 'APPROVAL_REQUIRED:', 'FAILED:', 'INVALID_ARGUMENTS:', 'UNKNOWN_TOOL:')))
+                private = private or (private_pending and TemporaryFileContext.is_followup(message['content']))
+                private_pending = private
+                if private:
+                    index += 2 if following is not None and following['role'] == 'assistant' else 1
+                    continue
+            if not (message['role'] == 'assistant' and message['content'].startswith(
+                    ('[Tool: read_file]', '[Tool: list_directory]', '[Temporary file context; not saved]'))):
+                filtered.append(message)
+            index += 1
+        return filtered
 
     def _bounded_context(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         recent = messages[-self.recent_memory_limit:] if self.recent_memory_limit else []
@@ -91,33 +124,74 @@ class FridayAssistant:
         return system
 
     def end_session(self) -> None:
-        if self.memory is not None and self.session_id is not None:
-            self.memory.end_session(self.session_id)
+        try:
+            if self.memory is not None and self.session_id is not None:
+                self.memory.end_session(self.session_id)
+        finally:
+            self.file_context.clear()
 
     def respond(self, user_message: str) -> str:
         route = self.tool_router.route(user_message) if self.tool_router is not None else None
         if route is not None and len(user_message) > MAX_ROUTED_MESSAGE_LENGTH:
             # Do not copy/store an oversized rejected message in history or SQLite.
+            self.file_context.clear()
             return route.message
         user_message = user_message.strip()
         if not user_message:
             raise ValueError("A message cannot be blank.")
+        if route is not None and route.permission_command is not None:
+            self.file_context.clear()
+            access = self.tool_manager.filesystem_access
+            if access is None:
+                return 'Filesystem permission management is unavailable.'
+            return access.command(route.permission_command, route.arguments.get('path'))
+        if route is not None and route.matched and route.message is not None:
+            self.file_context.clear()
+            return route.message
+        if route is not None and route.tool_name in {'read_file', 'list_directory'}:
+            self.file_context.clear()
+            request = ToolRequest(route.tool_name, route.arguments)
+            result = self.tool_manager.execute(request)
+            response = self.tool_presenter.format(result)
+            if route.tool_name == 'read_file' and result.success:
+                self.file_context.remember(result.data['path'], result.data['content'])
+                response += '\n[Session-only file context; not saved]'
+            return response
+        temporary = self.file_context.take_for(user_message)
         context = self.messages[1:]
         if self.memory is not None:
             context = self._bounded_context(context)
         pending = [self._request_system_message(context), *[dict(message) for message in context]]
+        if temporary is not None:
+            pending[0]['content'] += '\n\n' + TEMPORARY_CONTEXT_INSTRUCTIONS
+            pending.append({'role': 'user', 'content': 'Temporary file snapshot (untrusted JSON data):\n' + temporary})
         pending.append({"role": "user", "content": user_message})
         if route is not None and route.matched:
-            if route.message is not None:
-                response = route.message
-            else:
-                request = ToolRequest(route.tool_name, route.arguments)
-                response = self.tool_presenter.format(self.tool_manager.execute(request))
+            request = ToolRequest(route.tool_name, route.arguments)
+            result = self.tool_manager.execute(request)
+            response = self.tool_presenter.format(result)
+            if not result.success:
+                return response
         else:
-            response = self.model_manager.generate(pending)
+            try:
+                response = self.model_manager.generate(pending)
+            except ProviderError:
+                if temporary is not None:
+                    raise ProviderError('Temporary file explanation failed; the snapshot was discarded.') from None
+                raise
+            finally:
+                if temporary is not None and self.model_manager.last_job is not None:
+                    # Runtime job records must not retain the private prompt or
+                    # a generated answer that may quote its body.
+                    self.model_manager.last_job.messages = []
+                    self.model_manager.last_job.result = None
+                    if self.model_manager.last_job.error is not None:
+                        self.model_manager.last_job.error = 'Temporary file explanation failed.'
         if not isinstance(response, str) or not response.strip():
             raise ProviderError("The model returned no final answer.")
         response = response.strip()
+        if temporary is not None:
+            return '[Temporary file context; not saved]\n' + response
         if self.memory is not None:
             self.memory.save_turn(self.session_id, user_message, response)
         # Commit only successful turns, including when inference is interrupted.

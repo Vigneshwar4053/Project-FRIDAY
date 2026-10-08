@@ -38,10 +38,12 @@ class ListDirectoryTool(_FileTool):
             with os.scandir(fd) as entries:
                 data = []
                 truncated = False
-                for entry in entries:
-                    if len(data) == self.policy.max_directory_entries:
+                for index, entry in enumerate(entries):
+                    if index == self.policy.max_directory_entries:
                         truncated = True
                         break
+                    if self.policy.sensitive.excluded(os.path.join(path, entry.name)):
+                        continue
                     # JSON quoting escapes controls, surrogates and line breaks.
                     name = json.dumps(entry.name, ensure_ascii=True)[1:-1]
                     data.append({'name': name,
@@ -70,6 +72,8 @@ class ReadFileTool(_FileTool):
             content = b''.join(chunks)
             if len(content) > self.policy.max_file_size or b'\x00' in content:
                 raise ValueError('Oversized or non-text file.')
+            if self.policy.sensitive.excluded_content(content):
+                raise ValueError('Content is excluded by privacy policy.')
             text = content.decode('utf-8', errors='strict')
         return {'path': path, 'content': text, 'size': len(content), 'encoding': 'utf-8'}
 
