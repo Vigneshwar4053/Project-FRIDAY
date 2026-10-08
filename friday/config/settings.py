@@ -1,6 +1,7 @@
 """Central configuration and identity for FRIDAY."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from friday.models.profile import InferenceProfile, deep_profile, standard_profile
 
 
 @dataclass(frozen=True)
@@ -18,7 +19,19 @@ class Settings:
     ollama_think: bool = False
     database_path: Path = Path(__file__).resolve().parents[2] / "data" / "friday.db"
     recent_memory_limit: int = 20
+    # Compatibility rollout: enable in configuration or with CLI --adaptive.
+    adaptive_workloads: bool = False
+    workload_diagnostics: bool = False
+    standard_inference_profile: InferenceProfile = field(default_factory=standard_profile)
+    deep_inference_profile: InferenceProfile = field(default_factory=deep_profile)
     sync_library_path: Path = Path(__file__).resolve().parents[2] / "native" / "sync" / "libfriday_sync.so"
+
+    def __post_init__(self):
+        if type(self.adaptive_workloads) is not bool or type(self.workload_diagnostics) is not bool:
+            raise ValueError('Workload switches must be booleans.')
+        if not all(isinstance(profile, InferenceProfile) for profile in
+                   (self.standard_inference_profile, self.deep_inference_profile)):
+            raise ValueError('Workload profiles must be validated InferenceProfile values.')
 
     @property
     def system_prompt(self) -> str:

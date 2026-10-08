@@ -1176,3 +1176,272 @@ qwen3:4b through ModelManager/native synchronization. No files are executed.
 .venv/bin/python -B -m unittest discover -s tests
 PYTHONPATH=. .venv/bin/python -B tests/phase6c_demo.py
 ```
+
+
+## Phase 6D — adaptive workloads (opt-in rollout)
+
+Enable the adaptive path and, optionally, redacted diagnostics:
+
+```bash
+.venv/bin/python -B -m friday.main --adaptive
+.venv/bin/python -B -m friday.main --adaptive --diagnostics
+```
+
+`--diagnostics` also enables adaptive mode. Settings can instead set
+`adaptive_workloads=True`; the default stays False to preserve the committed
+Phase 6C API/CLI greeting behavior and all 649 baseline tests unchanged. This
+compatibility mode uses the existing Phase 6C behavior and does not apply the new
+inference budgets. No permissions or filesystem security rules change in either mode.
+
+| Level | Selection | Execution |
+|---|---|---|
+| L0 minimal | Exact hello/hi/good morning, hello friday/hi friday, thanks/thank you/goodbye | Local conventional reply; zero model/tool/permission calls; no memory save |
+| L1 light | Existing deterministic routing, trusted listing references, navigation, safe refusals/clarification | Existing ToolManager and Phase 6B permissions; zero model calls |
+| L2 standard | Ordinary chat, explicit verified-file explanation, unmatched hybrid intent | Existing ModelManager/provider with standard profile |
+| L3 deep | Explicit “think deeply …”, “perform a detailed technical analysis …”, or “compare … thoroughly” | One conversational call with deep profile; no autonomous tools |
+
+“hello, open downloads” and “thanks, show my files” are not L0. Classification is
+local, bounded and deterministic; no model call is made to choose a workload.
+Workload choice never authorizes a tool. Successfully matched actions and safe
+refusals retain priority over inference. Hybrid proposals still require strict
+validation and ToolManager authorization. Explicit deep analysis bypasses semantic
+tool planning; mixed deep/action requests ask for a supported command first.
+
+`list this folder`/`list this directory` relist the last successfully authorized
+location, with identity validation and fresh permission as needed. With no current
+listing they clarify; they never invent a path. File reads do not change navigation.
+
+### Per-request inference configuration
+
+Profiles are frozen, validated values in `friday/config/settings.py`, using
+`friday/models/profile.py`. Example trusted local configuration:
+
+```python
+from friday.models.profile import InferenceProfile
+# Fields on Settings:
+adaptive_workloads = True
+workload_diagnostics = False
+standard_inference_profile = InferenceProfile(
+    think=False, num_predict=768, num_ctx=8192, temperature=0.3,
+    timeout_seconds=300, max_context_bytes=24576, max_history_messages=6)
+deep_inference_profile = InferenceProfile(
+    think=True, num_predict=2048, num_ctx=8192, temperature=0.4,
+    timeout_seconds=450, max_context_bytes=32768, max_history_messages=16)
+```
+
+Only documented Ollama request options `num_predict`, `num_ctx`, and `temperature`
+are forwarded; timeout is the existing HTTP client's timeout. The existing model
+name remains unchanged. Profiles explicitly set `think=false` for L2
+and `think=true` for L3; only final answers are displayed. Intent mode keeps JSON, think=false,
+zero temperature and at most 512 output tokens, even with a larger profile.
+Options are scoped to the request inside the existing synchronization boundary and
+restored afterward. No model download, global Ollama change or second runtime is added.
+See the [official Ollama API reference](https://github.com/ollama/ollama/blob/main/docs/api.md)
+and [parameter reference](https://github.com/ollama/ollama/blob/main/docs/modelfile.mdx).
+The installed Ollama service reported 0.40.0. Public live L2 and L3 requests
+completed successfully through the existing ModelManager and native mutex; the
+owner also confirmed successful live L3 analysis. See the verification summary below.
+Unsupported provider/options fail safely rather than dropping the profile or retrying.
+
+Validation rejects unlimited/negative/bool token budgets, nonfinite temperature/
+timeout, odd history lengths, unknown fields and unreasonable maxima. Output is
+bounded by the requested tokens, a 256-KiB ordinary HTTP response cap (64 KiB for
+intent transport), and a 64-KiB final-answer cap for profiled jobs. This bounds work;
+it does not promise higher answer quality, lower peak CPU usage or lower Ollama RAM.
+HTTP timeout is not a hard end-to-end scheduler deadline or an OS CPU quota.
+
+### Bounded context and file privacy
+
+Adaptive prompts keep only recent complete user/assistant pairs. Old pairs are
+dropped oldest first to meet the profile; individual turns are never rewritten or
+summarized. The system instructions, current request and explicit one-use verified
+file snapshot are mandatory. Their contents are never shortened again to make a
+request fit; overflow fails before inference. System memory annotations are rebuilt
+for the actual selected history. SQLite rows are neither deleted nor rewritten.
+
+Serialized message bytes are capped by the smaller of max_context_bytes and
+`num_ctx - num_predict - 512`: a conservative one-byte-per-possible-token proxy
+with an output/template reserve, not an installed-model tokenizer. Default effective
+input limits are **6,912 bytes standard** and **5,632 bytes deep**. The same 8,192
+context setting means deep's larger output budget leaves less input room. This
+conservative check can reject text that would actually fit. A large 16-KiB temporary
+snapshot can therefore exceed the default budget; FRIDAY reports the limit instead
+of silently cutting verified data or rereading another file. Tokenizer/template
+behavior still needs live verification. Prompt selection is bounded; the preexisting
+ordinary in-session history/SQLite retention policy itself is unchanged.
+
+`explain this code`, `explain the code I just read`, and narrowly recognized
+`think deeply about this code` can consume the existing verified session-only
+snapshot once. Deep analysis grants no new read and never rereads a file. Unrelated
+turns, including greetings, expire temporary file context; navigation remains.
+File contents are untrusted data, not instructions. They and derived explanations
+remain outside SQLite and normal history; temporary model-job records are scrubbed.
+Permission decisions/prompts and private paths never enter workload diagnostics.
+
+### Observability and benchmarking
+
+Diagnostics are opt-in stdout JSON after a response (or model failure): selected
+level/profile, classification/routing/model/total nanoseconds, provider invocation
+attempt count, Python process CPU nanoseconds and Linux process peak RSS in KiB.
+Only the most recent metrics are retained in memory; no diagnostic file is written.
+There are no prompts, paths, tool outputs, authorization outcomes or timestamps.
+Metrics may still reveal interaction patterns, so enable them deliberately.
+
+**Python CPU/peak RSS exclude the separate Ollama process.** Peak RSS is cumulative
+for this Python process, not per-request RAM. No model-related CPU/RAM estimate,
+peak-CPU reduction or live speedup is claimed. Model latency measures provider.chat,
+not native-lock waiting or a pure server evaluation duration; total latency includes
+permission/input waits. Failed provider calls count as attempts; classification or
+budget failures before provider.chat count zero.
+
+```bash
+PYTHONPATH=. .venv/bin/python -B tests/phase6d_benchmark.py --samples 3
+# Explicit opt-in public-fixture live run; model/service must already be installed:
+PYTHONPATH=. .venv/bin/python -B tests/phase6d_benchmark.py --live --samples 1
+.venv/bin/python -B -m unittest discover -s tests -p 'test_workload.py'
+.venv/bin/python -B -m unittest discover -s tests
+make -C native/sync
+```
+
+Offline benchmarks use temporary public fixtures, real tools/permission checks,
+the existing native mutex and a fake provider with no artificial inference delay.
+They compare the retained Phase 6C compatibility path under shared instrumentation,
+not an untouched commit binary. Setup is outside measured calls; each case starts
+fresh. Live runs permit at most two samples per case and have uncontrolled warm/
+cold effects; neither mode auto-downloads or retries. Current offline invocation
+counts are **1/0/0/1/1 compatibility** versus **0/0/0/1/1 adaptive** for greeting,
+folder, known file, standard chat and deep analysis. Actual timings and limitations
+are documented in PHASE_6D_REPORT.md. PHASE_6D_BENCHMARK.json contains historical
+fake-provider results from before the final profiles; it remains untracked and is
+excluded from the recommended commit. The final suite has **770 passing tests**,
+including **121 new Phase 6D tests**, with all 649 baseline tests unchanged.
+Fake-provider timings do not establish live inference savings.
+
+### Owner live test sequence
+
+Start with `--adaptive --diagnostics`, then:
+
+| Input | Expected workload/behavior |
+|---|---|
+| hello friday | L0, local greeting, zero model calls |
+| thank you | L0, local gratitude, zero model calls |
+| open downloads | L1, existing authorization and listing |
+| open portfolio | L1 if a listed directory; fresh approval after Allow once |
+| open data.js | L1 if a listed regular file; separate read approval; no model |
+| explain this code | L2, one model call with the verified bounded snapshot, or a safe input-budget failure |
+| explain Python decorators | L2, standard bounded profile |
+| think deeply about the security architecture | L3, one deep-profile conversation; no extra tool authority |
+| go back | L1, previous successful location with current permission checks |
+| go home | L1, project root; no blanket Ubuntu home access |
+
+Example folder/file names must exist in the returned listing. Denial never triggers
+model fallback. Read the `[Workload]` JSON line to observe the level and actual
+invocation count without exposing private context. No Phase 6E feature is introduced.
+
+
+### Phase 6D final-answer reliability fix
+
+The provider ignores `message.thinking`, removes embedded thinking blocks, and
+rejects recognizable unmarked deliberation prefixes. It rejects output-token
+limit stops (`done_reason=length`), incomplete responses and unsupported completion
+reasons before display or storage. Errors contain no generated text and do not
+trigger retries. L2 uses `think=false`; L3 uses bounded thinking with its larger output
+budget. A deep request may exhaust that budget and return a clear error.
+No automatic budget increase or model replacement occurs.
+
+Completion metadata absent from older adapters remains compatible; arbitrary
+untagged prose cannot be reliably distinguished from an answer. Prefix detection
+can reject a legitimate answer using deliberation wording. The installed model
+passed the public live checks; other model variants and prompts still need testing. Existing historical SQLite
+rows are not rewritten by this fix.
+
+
+### L2 CPU reliability retesting
+
+The standard Settings profile now reserves 768 output tokens, keeps thinking off,
+and requests a concise direct answer (normally at most 150 words, one small example).
+Only three recent complete turns are selected. This is guidance, not a guaranteed
+word limit. Deep mode uses 2048 tokens with thinking enabled and brief-deliberation guidance. The context size is
+unchanged at 8192; no claim of lower peak CPU or RAM usage is made.
+
+Normal `done_reason=stop` succeeds even when token counts meet the budget. Explicit
+`length` remains a truncation error, including when `done=true`; punctuation is not
+proof of completion. Empty/absent/null reasons are accepted for older adapters,
+subject to final-answer validation; this compatibility mode cannot prove truncation.
+No custom stop sequences are added, and model-configured stops remain intact.
+
+Run `.venv/bin/python -B -m friday.main --adaptive --diagnostics`, then ask
+`do you know who am i`, `explain Python decorators`, and
+`think deeply about the security architecture`. The first two remain L2, the last
+L3. Only final answers or safe errors should appear. For a public synthetic live
+comparison without conversation memory or file content:
+
+```bash
+PYTHONPATH=. .venv/bin/python -B tests/phase6d_l2_benchmark.py --live --baseline --samples 1
+```
+
+Four bounded requests compare the previous and current L2 defaults. The benchmark
+prints only scenario identifiers, latency, call count, completion class, thinking
+presence, validated token/duration counters and tokens/second when available.
+It never prints prompts, answers, paths or exception text, and makes no retries.
+At most two samples are allowed. Cold/warm model loading and execution order affect
+comparisons; this is not a controlled measurement of whole-Ollama CPU/RAM use.
+
+
+### L3 final-answer reliability
+
+L3 retains thinking, with a hard total-output cap of 2048 tokens and brief internal
+reasoning guidance followed by a final structured analysis (normally at most 350
+words). It remains distinct from L2's 768 tokens, shorter-answer guidance and
+thinking off. L3's timeout is 450 seconds and history limit 16 messages; context
+setting remains 8192, with a conservative effective input cap of 5632 bytes.
+Mandatory verified-file context is never silently truncated to fit.
+
+Live testing reproduced thinking-only exhaustion at 1024 tokens. A 2048-token
+thinking alternative with concise guidance completed, while a direct-answer 1024
+alternative also truncated. Guidance is not a hard reasoning-token limit and no
+output cap guarantees completion. There is no automatic retry, fallback, raw-trace
+reuse or unlimited generation. A length stop still returns a safe error before
+persistence. No unsupported thinking_budget option or stop override is used.
+Model output cannot authorize tools; file/session privacy and permissions remain.
+
+Start `.venv/bin/python -B -m friday.main --adaptive --diagnostics`, then request
+`think deeply about the security architecture`. Expect L3, one model call and only
+a final analysis or clear error. For a short public aggregate retest:
+
+```bash
+PYTHONPATH=. .venv/bin/python -B tests/phase6d_l3_benchmark.py --live --current-only --samples 1
+# Compare previous and current L3 profiles (two requests):
+PYTHONPATH=. .venv/bin/python -B tests/phase6d_l3_benchmark.py --live --samples 1
+# Also measure the direct-answer alternative (three requests):
+PYTHONPATH=. .venv/bin/python -B tests/phase6d_l3_benchmark.py --live --alternatives --samples 1
+```
+
+One attempt per mode/sample; at most two samples. The harness records only token
+counts, completion class, latency, generation rate and thinking/final-presence
+booleans. It never records prompts, answers, reasoning text, paths or file bodies.
+Total output counts do not expose a verified reasoning/final token split. See the
+report for actual results and cold/warm-order limitations; no lower CPU/RAM usage
+or response-time guarantee is claimed.
+
+
+### Final live verification and CPU limitations
+
+Public L2 requests completed normally: the revised identity scenario took 23.96
+seconds (278 output tokens), and Python decorators took 24.91 seconds (301 tokens).
+The final L3 profile completed twice: 90.98 seconds (993 total output tokens) and
+86.14 seconds (935 tokens). Each used one model call and returned only final content.
+The owner independently confirmed working L3 analysis. These measurements use
+public synthetic prompts; no reasoning text or private file content was recorded.
+
+CPU-only qwen3:4b remains slow: responses can take tens of seconds or longer. The
+owner observed a complete L2 Python explanation taking 74.5 seconds. Prompt length,
+history, loading, requested detail and stochastic generation affect latency. The
+small live sample is not a guaranteed speedup, success rate or answer-quality result.
+Python CPU/RSS counters exclude Ollama. L3 can still exhaust its 2048-token cap;
+there is no automatic retry or separate hard thinking-token reservation. Large
+verified snapshots can exceed the conservative input cap and fail safely.
+
+Adaptive usage remains explicit: `.venv/bin/python -B -m friday.main --adaptive`,
+with optional `--diagnostics` for redacted workload metrics. Plain compatibility
+mode does not apply adaptive inference profiles. No permissions are changed.

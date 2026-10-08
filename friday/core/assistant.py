@@ -1,7 +1,13 @@
 """Session conversation flow, independent of transport and terminal I/O."""
 import re
-from friday.config.settings import settings
+import resource
+import sys
+from time import perf_counter_ns, process_time_ns
+from friday.config.settings import settings, Settings
+from friday.core.context import select_context
+from friday.core.workload import classify, WorkloadLevel, WorkloadDecision, ResponseMetrics
 from friday.core.navigation import NavigationManager
+from friday.models.profile import STANDARD_RESPONSE_INSTRUCTIONS, DEEP_RESPONSE_INSTRUCTIONS
 from friday.core.file_context import TemporaryFileContext, TEMPORARY_CONTEXT_INSTRUCTIONS
 from friday.tools.intent_translator import IntentTranslator, needs_translation
 from friday.tools.models import ToolRequest
@@ -18,7 +24,8 @@ class FridayAssistant:
     def __init__(self, provider: ModelProvider | ModelManager, system_prompt: str, *,
                  memory: MemoryManager | None = None, recent_memory_limit: int = 20,
                  tool_router: ToolRouter | None = None, tool_manager: ToolManager | None = None,
-                 tool_presenter: ToolPresenter | None = None):
+                 tool_presenter: ToolPresenter | None = None,
+                 workload_configuration: Settings | None = None):
         if not isinstance(recent_memory_limit, int) or recent_memory_limit < 0:
             raise ValueError("The recent memory limit must be a nonnegative integer.")
         # Accept the existing provider constructor while routing every request
@@ -31,6 +38,12 @@ class FridayAssistant:
             self.model_manager = ModelManager(provider, model)
         if (tool_router is None) != (tool_manager is None):
             raise ValueError("Router and tool manager must be supplied together.")
+        self.workload_configuration = workload_configuration if workload_configuration is not None else settings
+        if not isinstance(self.workload_configuration, Settings):
+            raise ValueError('Workload configuration must be validated settings.')
+        self.adaptive_workloads = self.workload_configuration.adaptive_workloads
+        self.last_performance = None
+        self._measurement = None
         self.tool_router = tool_router
         self.tool_manager = tool_manager
         self.tool_presenter = tool_presenter if tool_presenter is not None else ToolPresenter()
@@ -158,8 +171,56 @@ class FridayAssistant:
                     return response + '\nExplanation unavailable; no model retry was made.'
         return response
 
+    def _choose_workload(self, message, *, deterministic=False, explanation=False):
+        if not self.adaptive_workloads:
+            return None
+        started = perf_counter_ns()
+        try:
+            decision = classify(message, deterministic=deterministic, explanation=explanation,
+                assistant_name=self.workload_configuration.assistant_name,
+                user_name=self.workload_configuration.user_name)
+            if not isinstance(decision, WorkloadDecision):
+                raise ValueError('Invalid workload classification.')
+            self._measurement['decision'] = decision
+            return decision
+        except Exception:
+            self.file_context.clear()
+            raise ProviderError('Workload selection failed safely; no alternate action was attempted.') from None
+        finally:
+            self._measurement['classification_ns'] += max(0, perf_counter_ns() - started)
+
     def respond(self, user_message: str) -> str:
+        if not self.adaptive_workloads:
+            return self._respond(user_message)
+        if self._measurement is not None:
+            return self._respond(user_message)  # Existing one-use file explanation, one outer measurement.
+        started, cpu = perf_counter_ns(), process_time_ns()
+        count, model_time = self.model_manager.invocation_count, self.model_manager.model_request_ns
+        self._measurement = {'decision': WorkloadDecision(WorkloadLevel.STANDARD, 'pending', 'standard', True),
+                             'classification_ns': 0, 'routing_ns': 0}
+        try:
+            decision = self._choose_workload(user_message)
+            if decision.level is WorkloadLevel.MINIMAL:
+                self.file_context.clear()
+                return decision.response
+            return self._respond(user_message)
+        finally:
+            measure = self._measurement
+            try:
+                peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) if sys.platform.startswith('linux') else None
+            except (OSError, ValueError):
+                peak = None  # Optional observability must never break a response.
+            self.last_performance = ResponseMetrics(str(measure['decision'].level), measure['decision'].profile,
+                measure['classification_ns'], measure['routing_ns'], self.model_manager.model_request_ns - model_time,
+                max(0, perf_counter_ns() - started), self.model_manager.invocation_count - count,
+                max(0, process_time_ns() - cpu), peak)
+            self._measurement = None
+
+    def _respond(self, user_message: str) -> str:
+        started_routing = perf_counter_ns()
         route = self.tool_router.route(user_message) if self.tool_router is not None else None
+        if self._measurement is not None:
+            self._measurement['routing_ns'] += max(0, perf_counter_ns() - started_routing)
         if route is not None and len(user_message) > MAX_ROUTED_MESSAGE_LENGTH:
             # Do not copy/store an oversized rejected message in history or SQLite.
             self.file_context.clear()
@@ -168,6 +229,7 @@ class FridayAssistant:
         if not user_message:
             raise ValueError("A message cannot be blank.")
         if route is not None and route.permission_command is not None:
+            self._choose_workload(user_message, deterministic=True)
             self.file_context.clear()
             access = self.tool_manager.filesystem_access
             if access is None:
@@ -175,20 +237,32 @@ class FridayAssistant:
             return access.command(route.permission_command, route.arguments.get('path'))
         if self.navigation is not None and (not route.matched or
                 route.tool_name in {"read_file", "list_directory"} or route.message is not None):
+            started_routing = perf_counter_ns()
             plan = self.navigation.plan(user_message, self.tool_router.locations)
+            if self._measurement is not None:
+                self._measurement['routing_ns'] += max(0, perf_counter_ns() - started_routing)
             if plan is not None:
+                self._choose_workload(user_message, deterministic=True, explanation=plan.explanation is not None)
                 self.file_context.clear()
                 if plan.request is None:
                     return plan.message
                 return self._private_tool_response(plan.request, transition=plan.transition, explanation=plan.explanation)
         if route is not None and route.matched and route.message is not None:
+            self._choose_workload(user_message, deterministic=True)
             self.file_context.clear()
             return route.message
-        if (route is not None and not route.matched and
+        deep = self.adaptive_workloads and self._measurement['decision'].level is WorkloadLevel.DEEP
+        if deep and (re.search(r'\b(?:read|open|list|execute|write_file|bypass)\s+(?:[^\s]*[/\.]|that file|this file)', user_message, re.I) or
+                     re.search(r'\b(?:and|then)\s+(?:read|open|list|show|run|execute|delete|write_file|bypass)\b', user_message, re.I)):
+            self.file_context.clear()
+            return 'Use an explicit supported filesystem command first; deep analysis does not authorize file access.'
+        if (not deep and route is not None and not route.matched and
                 not TemporaryFileContext.is_followup(user_message) and needs_translation(user_message)):
             reference = (self.file_context.reference if
                          re.search(r'\b(this|that) file\b', user_message, re.I) else None)
-            intent = self.intent_translator.translate(user_message, reference=reference)
+            intent = (self.intent_translator.translate(user_message, reference=reference,
+                      profile=self.workload_configuration.standard_inference_profile) if self.adaptive_workloads
+                      else self.intent_translator.translate(user_message, reference=reference))
             self.file_context.clear()
             if intent.request is None:
                 # Candidate turns are session-only, even when classified as chat:
@@ -201,17 +275,35 @@ class FridayAssistant:
                 return self._private_tool_response(plan.request, translated=True, transition=plan.transition, explanation=plan.explanation)
             return self._private_tool_response(intent.request, translated=True)
         if route is not None and route.tool_name in {'read_file', 'list_directory'}:
+            self._choose_workload(user_message, deterministic=True)
             return self._private_tool_response(ToolRequest(route.tool_name, route.arguments))
         temporary = self.file_context.take_for(user_message)
-        context = self.messages[1:]
+        context = self.messages[max(1, len(self.messages) - 40):] if self.adaptive_workloads else self.messages[1:]
         if self.memory is not None:
             context = self._bounded_context(context)
-        pending = [self._request_system_message(context), *[dict(message) for message in context]]
-        if temporary is not None:
-            pending[0]['content'] += '\n\n' + TEMPORARY_CONTEXT_INSTRUCTIONS
-            pending.append({'role': 'user', 'content': 'Temporary file snapshot (untrusted JSON data):\n' + temporary})
-        pending.append({"role": "user", "content": user_message})
+        profile = None
+        if self.adaptive_workloads and not (route is not None and route.matched):
+            decision = self._measurement['decision']
+            profile = (self.workload_configuration.deep_inference_profile if decision.level is WorkloadLevel.DEEP
+                       else self.workload_configuration.standard_inference_profile)
+            def system_builder(recent):
+                system = self._request_system_message(recent)
+                if decision.level is WorkloadLevel.STANDARD:
+                    system['content'] += '\n\n' + STANDARD_RESPONSE_INSTRUCTIONS
+                else:
+                    system['content'] += '\n\n' + DEEP_RESPONSE_INSTRUCTIONS
+                if temporary is not None:
+                    system['content'] += '\n\n' + TEMPORARY_CONTEXT_INSTRUCTIONS
+                return system
+            pending = select_context(context, user_message, profile, system_builder, temporary=temporary)
+        else:
+            pending = [self._request_system_message(context), *[dict(message) for message in context]]
+            if temporary is not None:
+                pending[0]['content'] += '\n\n' + TEMPORARY_CONTEXT_INSTRUCTIONS
+                pending.append({'role': 'user', 'content': 'Temporary file snapshot (untrusted JSON data):\n' + temporary})
+            pending.append({"role": "user", "content": user_message})
         if route is not None and route.matched:
+            self._choose_workload(user_message, deterministic=True)
             request = ToolRequest(route.tool_name, route.arguments)
             result = self.tool_manager.execute(request)
             response = self.tool_presenter.format(result)
@@ -219,7 +311,8 @@ class FridayAssistant:
                 return response
         else:
             try:
-                response = self.model_manager.generate(pending)
+                response = (self.model_manager.generate(pending, profile=profile) if profile is not None
+                            else self.model_manager.generate(pending))
             except ProviderError:
                 if temporary is not None:
                     raise ProviderError('Temporary file explanation failed; the snapshot was discarded.') from None
