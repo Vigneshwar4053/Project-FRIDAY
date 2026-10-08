@@ -1,4 +1,4 @@
-# FRIDAY v0.3 Phase 2 — Native Model Synchronization
+# FRIDAY v0.4 Phase 6C — Voice-Ready Hybrid Tool Routing
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -10,9 +10,11 @@ cybersecurity, research, planning, and automation advice.
 - Local HTTP model provider, connection/response error handling, and clean exits.
 - Requests `think: false` and displays only final answer content. The provider
   also removes embedded thinking blocks when Qwen ignores that option.
-- No tool execution, cloud APIs, or extra Python dependencies. Suggested
-  commands must be run by the user. Only successful, sanitized conversation
-  turns are saved; failed or interrupted generations are not saved.
+- Hybrid read-only tools through terminal chat (deterministic routing first, bounded Qwen proposals for unmatched action-like requests); no cloud APIs or extra Python dependencies. Suggested
+  commands must be run by the user. Successful ordinary chat turns are saved;
+  filesystem turns and temporary file explanations are not saved.
+- Interactive read-only folder permissions, revocation, conservative sensitive-path
+  exclusions and one-use temporary context for explicit file explanations.
 
 ## Requirements and usage
 
@@ -47,9 +49,9 @@ Conversation text is stored locally in plain text.
 Each startup creates a new session and restores up to `recent_memory_limit`
 messages (default 20) across earlier sessions, in chronological order. An
 orphaned assistant reply at the start of a truncated window is dropped. Model
-requests use the same recent-message bound throughout the session, while all
-successful turns remain in SQLite. A limit of zero disables restored/model
-history but still saves successful turns. A message-count limit does not cap
+requests use the same recent-message bound throughout the session, while successful ordinary chat turns remain in SQLite. Filesystem turns and
+temporary file explanations are excluded. A limit of zero disables restored/model
+history but still saves ordinary chat turns. A message-count limit does not cap
 individual message length or guarantee fitting the model's token context.
 
 Normal exit, Ctrl+C, and Ctrl+D end the current session and close the database.
@@ -108,7 +110,8 @@ constructor remains compatible by wrapping that provider in a manager.
 Provider errors become failed jobs with a finish timestamp; `generate()` raises
 `ProviderError` so the CLI keeps its existing error behavior. Unexpected errors
 use a generic message. Interrupts mark the job failed before being re-raised.
-Only successful final answers proceed to conversation persistence. Ollama HTTP
+Successful ordinary final answers proceed to conversation persistence; temporary
+file explanations are excluded and their job content is scrubbed. Ollama HTTP
 handling and reasoning sanitization remain in the provider.
 
 ## Synchronization (Phase 2)
@@ -177,6 +180,328 @@ execution boundary for future multi-agent/model-job execution, without adding
 those workers in this phase. POSIX waiter order is not guaranteed; Python queue
 ordering still controls synchronous scheduling.
 
+## Safe tool foundation (v0.4 Phase 1)
+
+```text
+Explicit application caller
+    -> ToolRequest -> ToolManager -> ToolRegistry
+    -> argument validation -> PermissionPolicy -> Tool -> ToolResult
+```
+
+The typed tool API is separate from model jobs. The CLI explicitly registers
+tools and routes supported user intents deterministically; there is no LLM-driven
+invocation. Phase 2 adds bounded file tools described below, without Linux
+commands, shell execution, or Python code execution. SQLite memory and native
+model synchronization stay intact.
+
+A trusted `Tool` implementation declares an immutable `ToolSpec`: unique
+lowercase identifier, description, explicit risk, and argument schema. Schema
+fields use `ArgumentSpec` with a required flag and string/integer/number/boolean/
+object/array types. Validation rejects unknown fields, missing required values,
+wrong types, and boolean values used as numbers; it performs no coercion. Arrays
+and objects accept finite JSON-compatible values, without nested field schemas
+or nested domain validation. File tools separately enforce a path boundary.
+
+`ToolRequest` carries a UUID (or supplied request id), creation timestamp, and
+copied arguments. Requests, schemas, registered metadata, and result data are
+immutable: objects become read-only mappings and arrays become tuples. Unsupported
+values, nonfinite numbers, cycles/excessive nesting (over 64 levels), and nonstring
+object keys are rejected. `ToolRegistry` rejects duplicate names, keeps isolated
+per-instance state, returns immutable registration records on lookup, and lists
+immutable metadata in registration order.
+
+Default `RiskPermissionPolicy` decisions:
+
+| Risk | Decision |
+| --- | --- |
+| `READ_ONLY` | `ALLOW` |
+| `WRITE` | `REQUIRE_USER_APPROVAL` |
+| `EXECUTE` | `REQUIRE_USER_APPROVAL` |
+| `PRIVILEGED` | `DENY` |
+
+Policies are injectable and can inspect registered metadata and request arguments.
+Trusted application configuration can override defaults. Invalid decisions and
+policy exceptions fail closed. **Approval-required requests never execute**:
+there is no approval UI, token, or automatic retry in Phase 1.
+
+`ToolManager.execute(request)` looks up, validates, evaluates policy, and only
+then invokes the tool. Tools return structured data; the manager builds a
+`ToolResult` with status, data/error, tool/request identity, request timestamp,
+manager processing start, and finish time. Status distinguishes success, failure,
+unknown tool, invalid arguments, denial, and approval required. Tool exceptions
+produce generic failures without raw exception messages or tracebacks.
+KeyboardInterrupt/SystemExit propagate. Invalid API construction is a programmer
+error; correctly constructed requests receive structured results.
+
+This policy boundary is **not a sandbox for untrusted Python plugins**. Tool and
+policy implementations are trusted local code; application dispatch must use
+`ToolManager`. There is no dynamic loading, automatic tool discovery, audit
+persistence, subprocess invocation, `eval`, or `exec` in this package.
+
+Phase 6B adds filesystem-only approval. Later phases may add reviewed write/execute
+approval, serialization/auditing, and
+controlled model integration. None is implemented yet.
+
+Run the focused tests (purely fake/in-memory tools):
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_tools.py' -v
+```
+
+## Safe file tools (v0.4 Phase 2)
+
+```text
+Explicit caller -> ToolRequest -> ToolManager -> ToolRegistry
+  -> schema validation -> PermissionPolicy -> File tool
+  -> FileSystemPolicy (allowed roots + descriptor checks) -> ToolResult
+```
+
+Composition requires trusted, explicit existing directory roots; no default
+filesystem access is granted. Relative paths use the first root; absolute paths
+must stay inside one configured root. `max_file_size` defaults to 1 MiB and
+bounds both UTF-8 reads and writes. Example composition (no invocation):
+
+```python
+from friday.tools import ToolManager, ToolRegistry
+from friday.tools.files import register_file_tools
+from friday.tools.filesystem import FileSystemPolicy
+
+boundary = FileSystemPolicy(["/your/explicit/allowed/directory"], max_file_size=1024 * 1024)
+registry = ToolRegistry()
+register_file_tools(registry, boundary)
+manager = ToolManager(registry)  # invoke only via manager.execute(ToolRequest(...))
+```
+
+| Tool | Arguments | Structured output | Default permission |
+| --- | --- | --- | --- |
+| `list_directory` | `path` | path, sorted entry names/types | ALLOW |
+| `read_file` | `path` | path, UTF-8 content, byte size, encoding | ALLOW |
+| `file_info` | `path` | path, type, byte size, UTC modification time | ALLOW |
+| `write_file` | `path`, `content`, optional boolean `overwrite` | path, bytes written, overwrite intent | REQUIRE_USER_APPROVAL |
+
+The default write policy never opens or writes a file. There is no interactive
+write approval flow; Phase 6B approvals are limited to read/list access. Tests inject an explicitly allowing policy only with temporary
+files. Existing files are protected by exclusive creation unless `overwrite`
+is explicitly true. Missing parent directories are not automatically created.
+
+Paths reject NULs, empty values and all `..` components, even traversal that
+would normalize back inside a root. Both lexical and resolved paths must be
+inside a root, using component boundaries rather than string prefixes.
+Linux descriptor-relative opens walk directory components with `O_NOFOLLOW`;
+final opens also refuse symlinks. **All symlinks are rejected for access**, even
+in-root links; directory listings may report their names/types without following
+them. Read/write targets must be regular files with a single hard link. Reads
+are bounded during I/O as well as by initial size, decode strict UTF-8, and reject
+NUL-containing binary content. FIFO/device targets cannot become read/write tools.
+Metadata omits owners, permissions, inode identifiers and link targets. Operational
+errors remain generic structured failures through the existing manager.
+
+Limits: Ubuntu/Linux filesystem APIs are required. This is not an OS sandbox
+against hostile mount changes, directory relocation by another process, or
+untrusted Python implementations. Files may change during reads; overwrites are
+not atomic or crash-safe, and an I/O failure may leave a partial file. Directory
+enumeration is bounded by Phase 6A, with Phase 6B sensitive-entry filtering. No
+delete, rename, chmod/chown, subprocess execution or autonomous tool use is
+provided. Future work includes atomic writes and reviewed write approval.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_file_tools.py' -v
+```
+
+## Safe Linux/system tools (v0.4 Phase 3)
+
+```text
+Explicit caller -> ToolRequest -> ToolManager -> schema validation
+  -> PermissionPolicy -> narrow system Tool -> ToolResult
+                     disk_usage -> FileSystemPolicy -> opened descriptor
+```
+
+All five tools are `READ_ONLY` and default to `ALLOW`. Register explicitly with
+`register_system_tools(registry, filesystem_policy)` from `friday.tools.system`,
+then invoke only through `ToolManager.execute`. Registration does not connect
+anything to chat by itself, change permissions, or broaden the supplied filesystem roots.
+
+| Tool | Arguments | Data source and output |
+| --- | --- | --- |
+| `system_info` | none | `os.uname` and `sys`: OS, kernel, architecture, hostname, Python version/implementation |
+| `memory_info` | none | fixed `/proc/meminfo`: total/available/used and swap counters, in bytes |
+| `cpu_info` | none | `os.cpu_count`, `os.uname`, `os.getloadavg`, fixed `/proc/cpuinfo`: logical count, architecture, bounded model label, three load averages |
+| `disk_usage` | `path` | `os.fstatvfs` on a boundary-checked descriptor: total, used and user-available free bytes |
+| `process_status` | `name` | fixed `/proc/<numeric-pid>/comm`: exact-name running flag/count, incomplete flag and visible-process scope |
+
+Narrow Python APIs avoid command parsing and arbitrary execution. No subprocess,
+shell, process signals, service changes, package management, environment reads,
+command-line reads or generic command tool is provided. System tools return
+selected fields, never raw pseudo-file contents, usernames, process IDs or
+credentials. Hostname and CPU model are deliberately exposed by their specific
+capabilities; read-only status is not a guarantee that information is non-sensitive.
+
+`disk_usage` uses the same explicit roots, traversal rejection and no-symlink
+rules as file tools. `fstatvfs` queries the opened file/directory rather than
+reopening a validated pathname, avoiding a second path-security mechanism.
+Paths outside roots fail before querying capacity. Capacity describes the entire
+filesystem containing the allowed path, not the size of the allowed subtree.
+Reserved blocks mean `used + free` need not equal `total`.
+
+Memory reads are capped at 64 KiB, with strict ASCII parsing of selected kB
+counters and consistency checks. Total is required; missing available memory
+means available/used are null, rather than using an unreliable estimate. Missing
+swap counters produce null swap fields. Malformed selected counters, missing or
+inaccessible meminfo fail through the manager's generic structured error.
+CPU parsing examines at most the first 64 KiB and returns a model label of at
+most 256 characters. Missing model/load/count information is null; load averages
+are OS averages, not a CPU utilization percentage.
+
+Process names must be 1–15 ASCII letters/digits/underscore/dot/hyphen, starting
+with a letter or digit. This is exact `comm` matching, not a substring, executable
+path or command-line search. Invalid name syntax fails before `/proc` scanning;
+wrong declared argument types fail at manager validation. Reads use pinned
+directory descriptors and no-follow flags, at most 64 bytes per comm. Processes
+that vanish or become inaccessible are skipped and set `incomplete=true`.
+The count covers visible processes in the current PID namespace; permissions,
+`hidepid`, concurrent exits/renames and kernel name truncation limit certainty.
+A false running flag is not proof of global absence. Matching zombie entries may
+still be counted. This is a snapshot, not monitoring or process control.
+
+The Phase 2 mount/hostile-filesystem limitations still apply. There is no model-driven
+tool invocation, interactive approval or persistent audit log. Run focused tests:
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_system_tools.py' -v
+```
+
+## Controlled computation (v0.4 Phase 4)
+
+```text
+ToolRequest -> ToolManager -> schema validation -> PermissionPolicy
+  -> CalculateTool -> predefined bounded numerical operation -> ToolResult
+```
+
+Explicitly register with `register_computation_tools(registry)` from
+`friday.tools.computation`, then submit `ToolRequest("calculate", arguments)`
+through `ToolManager`. The tool is `READ_ONLY` (default `ALLOW`), but injected
+denial/approval decisions still prevent execution. Phase 5 adds narrow chat routing.
+
+Arguments are exactly `operation` (string) and `values` (numeric array).
+Results contain `operation`, `result`, and `input_count`.
+
+| Operations | Meaning/arity |
+| --- | --- |
+| `add`, `sum` | Sum all values; only `sum` permits empty input (zero) |
+| `subtract`, `divide` | Exactly two values, in supplied order |
+| `multiply` | Product of one or more values |
+| `power` | Exactly two values: base, exponent; bounded real floating-point power |
+| `mean`, `median`, `min`, `max` | One or more values |
+| `count`, `sort` | Count or ascending numeric sort; empty input allowed |
+| `percentage` | Exactly two values: part, whole; `(part / whole) * 100` |
+
+Named limits in `computation.py`: at most **1,000 values**, absolute numeric
+input/result magnitude at most **10^12**, absolute exponent at most **100**.
+Only exact built-in integers/floats are accepted, never booleans, strings,
+objects or nested values. NaN/infinity are rejected by the existing immutable
+`ToolRequest` constructor before dispatch. Missing/extra/wrongly typed fields
+return `INVALID_ARGUMENTS`; invalid operations, operand domains, arity, limits,
+zero denominators and unsafe results return generic `FAILED` results through
+the manager. Invalid request construction raises `ValueError`, as in Phase 1.
+
+Power uses fixed-size floating-point math rather than unbounded integer
+exponentiation. Multiplication checks every intermediate result, so even a
+later zero or small factor cannot bypass the magnitude limit. Sort output is
+bounded by the input-count limit. All scalar results must remain finite and
+bounded. Python numerical precision applies; exact decimal financial arithmetic,
+complex numbers, expression parsing and arbitrary precision are not provided.
+
+Users choose names from a fixed operation whitelist, not source code, modules,
+functions or scripts. The computation module has no filesystem, process,
+network, environment or dynamic-import access. It does not evaluate, compile
+or execute supplied strings. Code-shaped strings are ordinary invalid operands.
+This is a narrow capability, not an untrusted-code sandbox or Python REPL.
+Existing request snapshot creation occurs before tool-level count limits; a
+future routing/transport layer must also bound incoming payloads before copying.
+Phase 5 routing bounds incoming text and numeric payloads before request creation.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_computation_tools.py' -v
+```
+
+## Safe routing and CLI integration (v0.4 Phase 5)
+
+```text
+CLI user message -> FridayAssistant -> deterministic ToolRouter
+    matched -> ToolRequest -> ToolManager -> schema/permission checks -> Tool
+            -> ToolResult -> deterministic ToolPresenter -> retention policy
+    unmatched -> existing ModelManager -> ModelProvider/Qwen -> conversation history
+```
+
+The production CLI composes a fresh registry, file/system/computation tools,
+default permission policy, router and presenter. `settings.project_root` is an
+explicit absolute project path derived from the installed repository location,
+independent of working directory and user text. It is always an allowed file root.
+Additional read-only roots are opt-in through Settings or Phase 6B CLI approval;
+see the filesystem sections below.
+File-size and Phase 2 descriptor/no-symlink protections still apply. Direct
+`FridayAssistant` construction without injected routing stays compatible.
+
+Supported narrow routes (case-insensitive intent phrases, preserved file paths):
+
+| Intent | Examples | Tool |
+| --- | --- | --- |
+| Memory | `check my RAM`, `show memory usage`, `how much RAM is available`, `check swap` | `memory_info` |
+| System | `system info`, `what OS am I running`, `show kernel information`, `what architecture is this machine` | `system_info` |
+| CPU | `check CPU`, `show CPU information`, `what processor am I using`, `system load` | `cpu_info` |
+| Project listing | `what files are in this project?`, `list project files`, `show files in the project` | `list_directory` |
+| Read | `read README.md`, `show friday/models/manager.py`, `open tests/test_tools.py` | `read_file` |
+| Disk | `check disk space`, `how much disk space is available?`, `disk usage for this project` | `disk_usage` |
+| Process | `is ollama running?`, `check ollama process`, `is code running?` | `process_status` |
+| Calculation | `calculate the mean of 10, 20, 30`, `add 10,20,30`, `median of 5,1,9`, `what is 25 percent of 200` | `calculate` |
+
+Numeric routes support the Phase 4 operation names and comma-separated signed
+real/scientific numeric literals. Subtract/divide/power/percentage still require
+exactly two operands. No expressions are evaluated. Read requests preserve
+unquoted paths, including spaces when a dot or slash is present; single-token extensionless `read` requests are also recognized. Pronouns
+and ambiguous prose are not guessed. Absolute and traversal filesystem requests
+are recognized and checked by the file boundary. Directory routes accept explicit
+paths and folder aliases. Disk routes still use only the configured project root.
+
+**Unmatched normal conversation uses Qwen. Matched tool failures never do.**
+The presenter formats actual results directly, with a `[Tool: name]` source label.
+It does not ask Qwen to rewrite live facts. Failures display the actual status;
+permission denials and approval-required results remain final responses for that
+turn. Selected write verbs and generic `run/call/execute tool ...` syntax are
+blocked with an explicit not-enabled/approval message. `write_file` stays registered
+with default approval-required permission but is excluded from the router allowlist.
+There is no model-output dispatch protocol or automatic approval.
+
+Input is bounded to 4,096 characters **before router parsing and ToolRequest
+creation**; over-limit text is rejected without storing it in conversation memory.
+Parsed values are capped at 1,000, with numeric tokens at most 32 characters, and
+nonfinite values rejected before requests are copied. Code/shell-shaped numeric
+payloads are blocked; ordinary ambiguous calculation prose falls back to chat.
+The existing numeric magnitude/exponent limits remain authoritative in the tool.
+
+Ordinary chat and successful non-filesystem tool responses use the existing atomic
+`save_turn` path. Phase 6B keeps read/list results, filesystem denials, permission
+commands, and temporary file explanations outside persistent chat history. Raw results,
+request identifiers, internal policy metadata and routing objects are not persisted as
+conversation text. Tool-labelled historical replies are **past snapshots**, not
+proof of current system state. Successful non-filesystem tool replies follow the same restored/bounded
+conversation handling as chat; routed queries do not acquire the model semaphore.
+
+Presentation escapes terminal controls and limits display to 12,000 body
+characters, with directory listings capped at 100 displayed entries. Phase 6A
+bounds enumeration before collecting results; Phase 6B adds conservative
+sensitive-path exclusions and filesystem-only interactive approval. This is a
+local assistant with heuristic exclusions, not a complete secrets detector.
+There is no semantic intent model, autonomous loop, general command parser or
+general tool approval/auditing system. Broad synonyms and unsupported path syntax may use
+normal chat, whose suggestions do not execute. A future phase can expand routes
+and approval after review.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_tool_routing.py' -v
+.venv/bin/python -m friday.main
+```
+
 ## Tests
 
 ```bash
@@ -193,7 +518,8 @@ friday/
   __init__.py
   main.py                 # terminal I/O and composition
   config/settings.py      # centralized configuration and identity
-  core/assistant.py       # conversation and successful-turn history
+  core/assistant.py       # conversation, routing and privacy-aware history
+  core/file_context.py    # one bounded session-only file snapshot
   models/
     __init__.py
     job.py                # in-memory requests and lifecycle states
@@ -205,6 +531,22 @@ friday/
     base.py               # interface, lifecycle, context guard
     native.py             # private ctypes wrapper
     fallback.py           # standard-library lock
+  tools/
+    __init__.py           # standalone public tool API
+    base.py               # trusted Tool interface
+    models.py             # schemas, immutable requests/results, risk/status enums
+    registry.py           # isolated registry and metadata snapshots
+    permissions.py        # risk-level allow/deny/approval policy
+    access.py             # filesystem-only direct CLI approval and administration
+    grants.py             # restrictive validated persistent read-only store
+    sensitive.py          # path/name/content exclusions
+    manager.py            # validation, permissions, safe execution flow
+    filesystem.py         # explicit roots and descriptor-based path boundary
+    files.py              # typed list/read/info/write tools; explicit registration
+    system.py             # narrow read-only Linux tools; explicit registration
+    computation.py        # bounded predefined numeric operations
+    router.py             # bounded deterministic intents and read-only allowlist
+    presenter.py          # deterministic bounded tool response formatting
   providers/base.py       # abstract ModelProvider and ProviderError
   providers/ollama.py     # standard-library HTTP adapter
   memory/
@@ -220,6 +562,617 @@ logs/.gitkeep             # reserved log directory
 ```
 
 The core depends on the provider interface rather than Ollama. Future milestones
-may add ChromaDB retrieval, a scheduler, typed tools and permissions,
+may add ChromaDB retrieval, a scheduler, reviewed write/execute tools and approval,
 coding/cybersecurity agents, research/Gemini providers, Whisper, Piper, a React UI,
 and plugins. None are implemented in this milestone.
+
+
+## Multi-folder filesystem access (v0.4 Phase 6A)
+
+The project root remains enabled. No Downloads, Documents, Desktop, Pictures,
+Videos or other personal folder is automatically authorized. To explicitly opt in,
+edit trusted `Settings.filesystem_read_roots` in `friday/config/settings.py`, for
+example:
+
+```python
+filesystem_read_roots: tuple[Path | str, ...] = ("~/Downloads", "~/Documents")
+filesystem_max_directory_entries: int = 100
+```
+
+Only enable folders you want FRIDAY to read. Configured roots must exist, be
+eligible directories, and contain no symlink components. Invalid configuration
+fails closed at composition. Blanket home/system roots are rejected in production. Paths
+expand the current user's home without a hardcoded username. The CLI uses this
+configuration directly. Phase 6B also provides explicit interactive grants below.
+
+`create_tool_runtime` builds one `FileSystemPolicy` with the project first, all
+explicit read roots, and only the project as a write root. Default ToolManager
+permissions still require approval for writes; chat cannot dispatch writes.
+Even an explicitly write-allowing manager cannot write into additional read-only
+roots. Low-level callers can configure separate `write_roots` explicitly; these
+must be configured read roots. Omitting `write_roots` enables only the first root
+for policy-level writes, subject to ToolManager permission.
+
+Relative paths start in the project. Additional read-root basenames are
+case-insensitive aliases; the project basename never shadows its source package:
+`Downloads/notes.txt` works only when its root is authorized. Duplicate aliases or
+aliases colliding with project entries fail safely; use the absolute path instead.
+Absolute paths and `~/` paths retain the existing lexical/canonical containment,
+no-parent-traversal, descriptor-relative no-symlink, singly linked regular-file,
+strict UTF-8, nonblocking-special-file and 1 MiB read protections.
+
+Examples: `list files in Downloads`, `what files are in ~/Downloads`,
+`show files in Documents`, `list /absolute/authorized/folder`,
+`read ~/Downloads/notes.txt`, `read friday/tools/router.py`.
+Explicit unauthorized list/read requests are final tool responses and
+**never fall back to Qwen**. Phase 6B can request direct CLI approval for eligible
+folders; system folders such as `/etc` remain ineligible. Noninteractive requests
+without a grant fail safely.
+This phase does not launch applications; the legacy `open file.txt` spelling is
+still a text-read route.
+
+Enumeration collects at most `filesystem_max_directory_entries` entries (default
+100), consumes at most one additional entry to detect truncation, and stats only
+the collected entries without following symlinks. Results contain `entries`,
+`truncated`, `limit` and `path`. Only that bounded subset is sorted; it is not a
+globally sorted page, and directory iteration order may vary. Names are JSON-escaped
+for terminal controls, line breaks and undecodable filesystem bytes. Disappearing
+entries fail closed with no partial result. The presenter shows at most 100 entries
+and 12,000 body characters, with explicit omission/truncation indicators.
+
+Phase 6B supersedes the original retention behavior: filesystem results are not
+saved to CLI conversation memory, and known sensitive paths/content are excluded
+regardless of authorization. Unknown secrets can still evade heuristic exclusions.
+Mounts, malicious filesystems and concurrent directory renames remain limitations
+of the existing path-boundary design; it is not an OS sandbox.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_multi_folder.py' -v
+```
+
+
+## Interactive permissions and privacy (v0.4 Phase 6B)
+
+The LLM never grants access. A recognized `read_file` or `list_directory` request
+for an eligible unauthorized location can ask the direct interactive CLI user:
+
+```text
+Permission required:
+Operation: list_directory
+Folder: "/home/<user>/Downloads"
+Access: READ_ONLY
+Target: "/home/<user>/Downloads"
+
+Allow once: exact target and operation only.
+Always allow: this folder and descendants, read/list only.
+
+[1] Allow once
+[2] Always allow this folder
+[3] Deny
+Permission choice:
+```
+
+Paths are quoted/escaped to prevent filenames from forging prompt lines or terminal
+commands. A file-read prompt shows its exact file target and its containing folder.
+Choice 1 permits only that one target/operation, not sibling files or future
+requests. Choice 2 permits text reads and directory listings within exactly the
+shown folder and its descendants, with all exclusions still enforced. The parent
+of the displayed folder is never granted. Metadata-only path/type/identity probes may precede the prompt; no file body or
+directory entries are read before approval. Neither choice grants writes, execution,
+file-info/disk tools on new roots, privileged access or desktop launching.
+
+Only direct input while this prompt is active can approve. Accepted choices are
+`1`/`allow once`, `2`/`always allow this folder`, or `3`/`deny`. All other input,
+EOF and Ctrl+C deny. Both stdin and stdout must be TTYs. Redirected/headless use
+denies without prompting; existing authorized roots still work. The composition
+API defaults to no approval adapter. Model output, file contents and ordinary
+chat messages such as `1`, `yes` or `allow once` never become approvals.
+
+Allow-once authorization lives only in a request-scoped context. It binds the
+operation, exact target, folder identity and target identity, then disappears even
+on failure. It never changes the global read roots and never enters the store.
+The tool schema and risk policy run before prompting, and the filesystem boundary
+rechecks containment, exclusions, no-symlink traversal and approved identities
+when the tool opens the target. No failure or denial falls back to the model.
+
+### Folder commands
+
+These deterministic commands stay outside model prompts and conversation history:
+
+```text
+show authorized folders
+list authorized folders
+always allow Downloads
+revoke access to Downloads
+revoke access to ~/Documents
+```
+
+`always allow` initiates the same direct prompt; choose 2 to save a persistent grant.
+The command's wording itself does not approve anything. `revoke access to` removes
+only an existing exact explicit persistent folder grant and reports its canonical
+folder. No extra revocation confirmation is needed. Built-in project access and
+Settings roots cannot be revoked here; edit Settings for configured roots.
+Revoking a nested grant does not remove inherited access from another configured
+or persistent ancestor. If that matters, revoke/edit the ancestor too.
+
+Configured/persistent folder basenames are aliases only when unambiguous. Standard
+unconfigured names Downloads, Documents, Desktop, Pictures, Videos, Music, Public
+and Templates are **candidates** under the current home directory for prompting,
+not implicit grants. Use absolute paths for custom folders or ambiguous aliases.
+Actual home directories, their ancestors, top-level filesystem directories,
+whole `~/.config`/`~/.local` trees and system trees such as /etc, /proc, /sys, /dev,
+/usr, /bin, /sbin, /lib, /boot, /run and /root cannot become production read roots.
+Individual files directly in an ineligible parent (for example `~/notes.txt`)
+also cannot be interactively approved under this folder-based policy. Existing
+properly scoped project and configured folder access remains supported.
+
+### Dedicated permission storage
+
+Default: `<project>/data/permissions/grants.json`, separate from conversational
+SQLite. Set `Settings.filesystem_permission_store_path` to a trusted absolute Path
+for a different private location. Add custom locations inside the repository to
+.gitignore; the default data directory is already ignored. Its parent must be owned by the current user
+and mode 0700; files are owned regular singly linked files with mode 0600.
+The store contains only versioned READ_ONLY folder records and device/inode IDs,
+not file bodies or secrets. No permission records are sent to the model.
+
+There are at most 64 records and 64 KiB of store data. Every use reloads/validates
+schema, path encoding, root eligibility and current no-symlink folder identity.
+Malformed JSON, duplicate keys/records, dangerous roots, changed identities,
+insecure modes, symlinks, hardlinks and unavailable storage fail closed. File-info,
+disk, write and execute capabilities are not granted by persistent read records.
+
+Updates take a nonblocking process lock and atomically replace the snapshot.
+A fsynced pending marker gates access until the updated snapshot is durable;
+interrupted writes/revocations leave storage unavailable instead of activating a
+partial grant. A crash after successful publication may conservatively resurrect
+that marker and deny access, rather than restore a revoked snapshot. Store errors
+block further filesystem read/list operations in that runtime. Ordinary chat is
+still available. Do not automatically remove a pending marker or repair invalid
+data: review the store offline and its grants before restoring it, then restart.
+No cached grant can survive a successful revocation. An already-open operation
+is not forcibly cancelled by another process's revocation.
+
+### Sensitive-path policy
+
+Exclusions apply at FileSystemPolicy even inside the project, configured roots,
+allow-once targets and persistent grants. Listings omit excluded entries before
+statting them, and excluded entries still count toward the bounded scan budget.
+The precise rules are in `friday/tools/sensitive.py`:
+
+- Credential/security directories: .ssh, .gnupg, .aws, .kube, .pki, .azure, secrets,
+  .git, keyrings, .password-store, and .config/gh, .config/gcloud, .config/op.
+- Browser/password-manager components: .mozilla, Firefox, Chromium, Google Chrome's
+  google-chrome directory, Brave, Edge, Vivaldi, Bitwarden, 1Password and KeePassXC.
+- Credential/config names: .env/.env.*, private-key names, id_rsa/id_ed25519/id_dsa/
+  id_ecdsa, authorized_keys, credentials/credentials.*, .netrc, .npmrc, .pypirc,
+  .git-credentials, kubeconfig, .dockerconfigjson and .docker/config.json.
+- Token, API-key, client-secret, secret-key, private-key, service-account and
+  Firebase-adminsdk naming conventions; certificate/key/password-vault suffixes
+  .pem, .key, .p12, .pfx, .ppk, .kdb, .kdbx, .psafe3, .opvault, .agilekeychain.
+- Browser credential filenames such as Login Data, Cookies, logins.json, key4.db,
+  key3.db and signons.sqlite, plus permission-store names and its entire directory,
+  and the configured conversational database and its standard sidecars.
+
+Matching is case-insensitive for names/components, not a blanket ban on hidden
+files: `.editorconfig` remains readable. Text reads additionally reject PEM/OpenSSH private-key
+markers, OpenPGP private-key blocks and nonempty JSON strings under access_token, refresh_token,
+client_secret, private_key and aws_secret_access_key. These are conservative
+heuristics: renamed/encoded secrets, unusual credential stores and unknown token
+formats can evade them; harmless examples can be excluded. Invalid UTF-8, NUL text,
+oversized files, special files and shared hardlinks remain rejected. There is no
+interactive override for exclusions, and errors contain no private content or
+unnecessary sensitive metadata.
+
+### Temporary file context and memory
+
+Router refusals and unsuccessful tool decisions are not retained, including
+blocked writes and approval-required messages. Read/list results, filesystem
+denials and permission commands are not saved to
+SQLite and are not appended to ordinary model conversation history. Successful
+text reads display `[Session-only file context; not saved]` and keep **one** bounded
+snapshot: at most 16,384 bytes of serialized JSON, including source and content.
+The snapshot may be shorter than the displayed file. It is replaced by the next
+file read and discarded by an unrelated turn, any other routed operation, a
+permission command, a failed request or session shutdown.
+
+An explicit immediate follow-up can use that snapshot once: `explain that code`,
+`explain this code`, `explain that file`, `explain this file`, `explain the file`,
+`summarize that file`, `summarize this file`, `review that code`, `analyze that code`,
+or `what does that code do`. **This intentionally sends the bounded file snapshot
+to the configured model for that follow-up.** Deterministic reads/listings and all permission prompts/choices make no model call.
+Phase 6C may use one intent-model call before an unmatched semantic read/list request;
+it receives no file body and never interprets permission choices.
+
+The snapshot is framed as untrusted JSON data in a user message with explicit
+system instructions to ignore embedded instructions/approvals. The explanation
+is labelled `[Temporary file context; not saved]`. Both that turn and its generated
+answer stay out of persistent and ordinary chat history, and private model-job
+messages/results/errors are scrubbed even on failure. The snapshot is consumed
+on the attempt, so a later explanation needs another explicit read. Model behavior
+cannot be guaranteed against prompt injection; it has no authorization or execution
+channel and its private answer is not retained for later unrelated prompts.
+
+Ordinary chat memory and successful non-filesystem tools continue to use the existing atomic
+save_turn behavior. Legacy labelled filesystem turns and their recognized immediate follow-ups are
+filtered from restored model context without deleting old SQLite data. Unlabelled
+older derived text or history windows missing the original file turn cannot always
+be identified; review legacy data before sensitive use. Old Phase 6A databases/backups may
+still contain previously saved file bodies; this phase does not silently purge
+user data or promise secure RAM/disk erasure.
+
+### Phase 6B regression tests and demo
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_filesystem_permissions.py' -v
+.venv/bin/python -B -m unittest discover -s tests
+PYTHONPATH=. .venv/bin/python -B tests/phase6b_demo.py
+.venv/bin/python -B -m friday.main
+```
+
+The reproducible demo mocks only direct terminal choices and model explanation,
+uses temporary writable state, and omits the body of its real project-source read.
+No personal documents or real user files are modified. Live Qwen inference is a
+separate integration check; explanation tests prove the supplied context/privacy
+boundaries with a deterministic provider.
+
+Phase 6B privacy/store recovery limitations remain applicable. Hybrid intent routing
+is documented below; bounded session navigation is described below; search and desktop opening remain separate phases.
+
+## Phase 6C: voice-ready hybrid natural-language routing
+
+Deterministic routing remains first: recognized commands, invalid requests and
+refusals never reach Qwen as fallback. A small semantic location resolver adds
+simple known-folder browsing without model inference. Unfamiliar action-like
+phrasing uses one structured Qwen response through the existing ModelManager,
+Ollama provider and native POSIX mutex. Ordinary chat retains its memory-aware
+conversation flow. All tools use the same ToolManager and permission system.
+
+```text
+User → deterministic router → simple folder concept → trusted location resolver
+                           └→ unmatched → Qwen proposal → strict validation
+                                                          + location resolution
+                                         ↓
+                         ToolRequest → ToolManager → PermissionPolicy
+                                         ↓
+                         Phase 6B filesystem access → registered tool
+```
+
+### Semantic locations and voice input
+
+| Spoken concept | XDG mapping | Default only when mapping is absent |
+|---|---|---|
+| photo / photos / picture / pictures | XDG_PICTURES_DIR | ~/Pictures |
+| videos | XDG_VIDEOS_DIR | ~/Videos |
+| downloads | XDG_DOWNLOAD_DIR | ~/Downloads |
+| documents | XDG_DOCUMENTS_DIR | ~/Documents |
+| music | XDG_MUSIC_DIR | ~/Music |
+| desktop | XDG_DESKTOP_DIR | ~/Desktop |
+
+`open photos`, `show my pictures`, `pictures`, `open videos`, `show downloads`,
+`open documents`, `open music`, and `open Desktop` use a small verb/alias grammar,
+not a collection of memorized sentences. `FRIDAY, open my photos.` is accepted
+as transcribed text. These requests cost **zero Qwen calls**. “Open” means list
+contents in this CLI; it never claims to launch an application.
+
+`can you show me my photos?`, `take me to my downloads`, and
+`FRIDAY, can you take me to the place where I keep my pictures?` now use the
+trusted fast path too. Unfamiliar requests such as `what's in my pictures folder?`,
+`show me where my videos are`, and `can you inspect my pictures folder?` retain
+the hybrid intent model.
+Trusted Python resolves the folder concept after strict proposal validation.
+A bare `pictures` also works after a clarification because it is a complete
+unambiguous new browsing request. No pending clarification/path guessing state is introduced. A separate bounded
+session navigation manager now remembers successful listings, as described below.
+
+The resolver reads only `$XDG_CONFIG_HOME/user-dirs.dirs`, or
+`~/.config/user-dirs.dirs` when that environment variable is absent. It parses
+bounded data: at most 16,384 bytes and 64 lines, double-quoted `XDG_*_DIR` entries,
+absolute paths or a literal leading `$HOME/`. Non-English folder names and spaces
+are supported. Comments and blank lines are allowed. No shell is run and arbitrary
+variable/command expansion is rejected. Config files and every parent are opened
+without following symlinks; special/hardlinked/oversized files, invalid UTF-8,
+controls, duplicate keys, traversal and malformed syntax fail closed. Backslash
+escape syntax and `${HOME}` expansion are deliberately unsupported. A malformed
+configuration does not silently select the English default. A mapping of `$HOME`
+(disabled folder), `/`, or a relative path is unavailable; no home/root listing is
+authorized. Missing directories are reported, never created or replaced.
+
+XDG mappings are location hints, **not permissions**. The resolver neither grants
+access nor opens folder contents. All resulting paths still pass through the
+existing sensitive-path policy, canonical containment, descriptor traversal,
+identity checks, permission prompt and file/list bounds. Configuration is reloaded
+on each resolution; no authorization is cached in the resolver. Semantic names
+use XDG directories; pre-existing deterministic configured-root aliases such as
+`list files in Downloads` retain their Phase 6A rules. Their ambiguity/conflict
+checks remain intact. Use an explicit path to distinguish those meanings. For
+revoking a localized XDG grant, use the canonical folder shown by `show authorized
+folders`; permission-management aliases retain their existing rules.
+
+Explicit paths stay exact: `/Videos` is different from `~/Videos`. A bare path is
+a deterministic directory-list request, preserving its spelling. It is never
+rewritten to a semantic home folder or localized XDG directory. Existing explicit
+file-reading commands still use their original routes. `play a video`,
+`launch the photo viewer`, and `open the Photos application` are unsupported
+application requests. `go back` and `return to the previous directory` revisit a
+successfully visited directory when one exists. `go back from /Downloads` and
+`enter that folder` without a named visible child remain unsupported or require
+clarification; they never invent a location. Instructional questions such as `how do I open Pictures in
+Ubuntu?` remain ordinary chat, including when prefixed with `FRIDAY,`.
+
+### Strict proposals, allowlist and permissions
+
+Existing path proposals remain supported:
+
+```json
+{"kind":"tool","tool_name":"list_directory","arguments":{"path":"~/Downloads"}}
+```
+
+The smallest semantic extension is exclusive to `list_directory`:
+
+```json
+{"kind":"tool","tool_name":"list_directory","arguments":{"location":"pictures"}}
+```
+
+`location` must be one of the bounded aliases above and grounded in exactly one
+concept in the current user request. It cannot coexist with `path`, apply to a
+read/write tool, replace an explicit path or reinterpret a launch/navigation
+request. Compatible model paths such as `~/Pictures` for a spoken `photos` request
+are normalized using the same resolver, not the model's home-directory guesses.
+Only the normalized existing `path` argument reaches ToolManager. Model output
+cannot set the internal semantic-evidence flag.
+
+Other exact forms remain `{"kind":"chat","response":"..."}`,
+`{"kind":"clarification","question":"..."}` and
+`{"kind":"unsupported","reason":"..."}`. Text is display-only. Unknown/duplicate
+fields, arrays, nested/multiple calls, non-JSON text/code wrappers, wrong types,
+unknown tools/arguments, authorization flags/tokens, controls, shell syntax and
+nonfinite JSON are rejected. Limits remain 4,096 input characters, 8,192 response
+bytes, depth 3, 16 keys, 4,096 bytes per path and 1,000 display-text characters.
+Invalid proposals fail safely without retry or execution.
+
+The eight registered read-only model choices remain `list_directory`, `read_file`,
+`file_info`, `system_info`, `memory_info`, `cpu_info`, `disk_usage`, `process_status`.
+Computation remains deterministic. Writes, shell execution, privileged actions,
+search and autonomous workflows are excluded. Allow once, always allow and deny
+still require direct CLI input. Always-allow grants remain folder/descendants
+**read/list only**, revocable; metadata tools retain static-root restrictions.
+Denial never invokes Qwen to find another way in. Sensitive files and contents
+remain blocked regardless of approval. No write/execute scope was added.
+
+Safe failure categories distinguish an unavailable path, non-directory target,
+permission denial and a blocked/invalid filesystem request. The presenter uses
+fixed messages from a typed category, never raw exception strings, private paths
+or permission-store details. The existing FAILED status/generic internal error
+remain compatible. Unsupported navigation and invalid proposals have separate
+controlled responses; malformed XDG configuration fails before tool dispatch.
+
+### Privacy and performance
+
+Semantic browsing, proposals, failures, permission prompts/choices and tool outputs
+are not saved to SQLite or ordinary chat context. Planning sees only the current
+request, compact schemas/aliases and an optional bounded immediate file path;
+no file bodies, listings, XDG mapping contents or permission-store records.
+Intent job messages/results/errors are scrubbed on success, failure and interruption.
+Ordinary chat remains persistent. One bounded private file snapshot still supports
+an explicit immediate explanation, intentionally outside intent planning and
+without persisting the body or derived answer. Old SQLite rows/backups can retain
+pre-Phase-6B file bodies/unlabelled derived text; nothing is silently deleted.
+
+Fast requests perform a small bounded XDG read and zero model calls. Unfamiliar
+wording uses one model call, with no planning/retry loop. A structured CHAT result
+includes its answer in that same call and remains session-only, avoiding duplicate
+inference and private-path retention at the cost of prior-chat context for that
+candidate. Existing Ollama intent bounds remain 512 requested output tokens,
+65,536 HTTP envelope bytes, JSON format, think=false and the configured timeout.
+The original normal-chat provider behavior and single-threaded ModelManager/native
+mutex are preserved for future Phase 6D adaptive workload management.
+
+### Offline checks and owner live test plan
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_semantic_locations.py' -v
+.venv/bin/python -B -m unittest discover -s tests -p 'test_intent_translator.py' -v
+.venv/bin/python -B -m unittest discover -s tests
+make -C native/sync
+.venv/bin/python -B -m unittest discover -s tests -p 'test_sync.py' -v
+PYTHONPATH=. .venv/bin/python -B tests/phase6c_demo.py
+.venv/bin/python -B -m friday.main
+```
+
+The semantic refinement passed 538 tests and navigation passed 582. With trusted
+file references the offline suite has **649 passing tests**: 370 committed Phase 6B
+tests, 81 hybrid tests, 87 semantic tests, 44 navigation tests and 67 file-reference
+regressions. The extended demo uses temporary
+fixtures, a fake model, real CLI authorization/ToolManager and the actual native
+mutex. It verifies backend behavior, not new live Qwen accuracy. The owner reported
+successful pre-refinement live Downloads/Desktop/Pictures checks; refined semantic
+accuracy and latency still need owner verification with qwen3:4b.
+
+| Live input | Expected behavior |
+|---|---|
+| open photos | Fast list of XDG Pictures; permission prompt if needed |
+| pictures | Same fast browsing request; no pending state required |
+| open videos | Fast list of XDG Videos, not playback |
+| open downloads | Fast list of XDG Downloads |
+| open Desktop | Fast list of XDG Desktop; case insensitive |
+| show my documents | Fast list of XDG Documents |
+| what is inside my music folder? | One Qwen proposal, trusted Music resolution, permissions |
+| how do I open Pictures in Ubuntu? | Ordinary instructional chat, no tool |
+| play a video | Unsupported playback; no tool/model call |
+| go back | Revisit the previous successful listing with fresh authorization, or report no previous location |
+| /Videos | Exact absolute path; safe failure outside configured/eligible roots; never ~/Videos |
+| ~/Videos | Exact home path; permission-controlled listing; no XDG rewriting |
+
+Select Deny for personal folders unless you explicitly want to display their
+filenames. Use public fixtures for file reads. Test unknown/malformed proposals and
+a denied folder: no retries, private content, arbitrary execution or SQLite entries
+should appear. Missing/default-disabled folders report safe errors rather than
+choosing another location.
+
+Known limits: six semantic concepts/nine English spoken aliases, not a full
+multilingual voice interface; localized filesystem names come from XDG. No speech
+capture, GUI launcher, directory history, recursive search, new clarification state
+or filesystem indexing is implemented. Strict config syntax and lexical grounding
+may require explicit paths. File-policy secret detection remains heuristic, and
+model answers can be wrong or injection-influenced but cannot approve/execute.
+
+Phase 6D is **Adaptive Workload Management**: build on the shared ModelManager,
+existing native synchronization, zero-inference fast paths and explicit budgets;
+measure CPU inference, queue/timeout behavior and safe cancellation. Navigation/
+search require their own later bounded, permission-scoped design. Phase 6E desktop
+opening requires approved apps/MIME types, executable restrictions, exact path
+checks, direct confirmation and safe process arguments without a shell. Read grants
+never authorize launching applications or any Trash modification.
+
+### Session-only directory navigation
+
+After `open downloads`, a visible directory named `portfolio` can be opened with
+`open portfolio`, `enter portfolio`, or `go into portfolio`. Voice-style input such
+as `FRIDAY, please enter the portfolio folder.` works too. Simple navigation costs
+zero Qwen calls. Standard directory concepts (`Pictures`, `Downloads`, etc.) keep
+Semantic Location Resolver precedence. Explicit `/Videos` and `~/Videos` retain
+their original meanings and do not become relative to the current location.
+
+`go back` revisits the last successfully visited directory, rather than calculating
+a parent. `go home` lists FRIDAY's configured project root, then clears navigation
+history after success. It does not authorize the entire Ubuntu home directory.
+The manager retains at most 16 prior locations and 100 visible child entries. It
+records a location only after a successful, authorized listing. Failed or denied
+requests leave both location and history unchanged. A new successful listing
+replaces the child snapshot; no filesystem search is performed.
+
+Trusted tool results provide directory names and device/inode identities. These
+identities are checked again before approval and on descriptor-relative execution.
+They are stale-target checks, never permission grants. Parent **Allow once** does
+not authorize a child, and returning with `go back` asks again when necessary.
+Persistent read/list grants retain their existing scope and can be revoked.
+Sensitive entries and symlinks cannot be navigated through the cache. Unknown,
+unlisted or ambiguous entries require clarification or an explicit path;
+case-colliding names can be selected with exact double-quoted spelling. Controls
+and invalid Unicode names are excluded from navigation. Explicit `read path`
+commands remain available; `open` of a listed regular file reads supported text
+through the same permission system. `enter` of a regular file explains the type mismatch.
+
+Navigation context stays in Python memory, is never sent to Qwen or SQLite, and
+clears at session shutdown. A validated model basename can select a cached child,
+but only trusted backend code constructs its guarded path. Listing and navigation
+responses remain outside conversation memory. There is no forward history,
+recursive search, navigation persistence, speech capture, or application launching.
+Truncated listings only make their returned entries available for navigation.
+Stale snapshots require relisting; device/inode checks do not promise immunity to
+inode reuse or every concurrent filesystem mutation.
+
+Owner test sequence (use only folders you want to authorize):
+
+1. Start FRIDAY as documented above with qwen3:4b available.
+2. `open downloads` → existing authorization and a bounded listing.
+3. `open portfolio` → works only if `portfolio` was returned as a directory;
+   Allow once for Downloads asks for a separate child decision.
+4. `go back` → authorized revisit of Downloads; Allow once may prompt again.
+5. `go home` → project listing, no blanket home grant.
+6. Deny child approval → no listing and no location change.
+7. `open pictures` → semantic/XDG Pictures mapping takes precedence.
+
+Offline checks, with no personal file access or live Ollama dependency:
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_navigation.py'
+.venv/bin/python -B -m unittest discover -s tests
+PYTHONPATH=. .venv/bin/python -B tests/phase6c_demo.py
+```
+
+### Context-aware file reading and explanations
+
+After listing a folder containing `data.js`, `index.html`, and `images`:
+
+| Request | Behavior |
+|---|---|
+| `open images`, `enter images`, `show images folder` | List the verified child directory |
+| `open data.js`, `read data.js`, `show data.js` | Read the verified file through ToolManager |
+| `what's in data.js?`, `what have in data.js` | Display the actual authorized text; no Qwen call |
+| `show me index.html`, `read the index file` | Read the exact name, or unambiguous listed file stem |
+| `explain data.js`, `explain what's inside data.js` | Authorized read, then one bounded session-only model explanation |
+| `summarize index.html` | Authorized read, then one bounded session-only summary |
+| `open portfolio.zip` | Explain that archive browsing is unsupported; no archive read |
+| `open .zip file` | One visible ZIP: same refusal; multiple matches: ask which one |
+
+File existence and type come only from the last successful authorized listing.
+Exact names, casefold matching and explicit `the … file` stem references are bounded
+by that snapshot. Ambiguous/unknown references ask for a listed name or explicit
+path, without searching, guessing, or asking Qwen to invent contents. Directories
+use list_directory; files use read_file. Reading never changes the current directory
+or back history. A later successful listing replaces the snapshot.
+
+A listing's Allow once does **not** grant file reads. Each read checks current
+ToolManager policy, folder permissions, sensitive exclusions, no-follow traversal,
+regular single-link type, file-size limit and strict UTF-8/non-NUL content rules.
+The cached parent and file device/inode identities are checked before prompting
+and again against descriptors during execution. A replaced file, replaced parent,
+or symlink cannot silently become a different read target. A valid extension is
+not proof of text; binary content under `data.js` is refused. Unsupported content
+has a safe explanatory error. Controls in supported text are escaped for display.
+The UTF-8/non-NUL check is a bounded text policy, not a complete MIME detector.
+
+ZIP filenames in contextual requests are deliberately refused even if their bytes
+might decode as text; no extraction, archive inspection, execution or application
+launching is added. Extension selection requires exactly one matching listed file.
+Symlinks and special entries remain unsupported. Explicit paths retain the existing
+filesystem semantics and security checks.
+
+An explicit explanation/summary makes one model call only after a successful read.
+It reuses the existing one-item, 16,384-byte temporary snapshot and labels the content
+as untrusted data, unable to authorize instructions or tool calls. Snapshot truncation
+is indicated to the model. Denied/failed/binary reads make zero explanation calls.
+Model failures are not retried; the verified read text is returned with an explanation
+failure notice. Model prompt/job records are scrubbed, and neither body nor explanation
+is saved to SQLite or normal conversation history. Navigation context is never sent
+to the model. Ordinary chat memory continues working. Model summaries can still be
+inaccurate and may cover only the bounded snapshot; no new live Qwen accuracy is claimed.
+
+Voice-style folder examples now handled without Qwen:
+
+```text
+FRIDAY, take me to my pictures
+FRIDAY, can you take me to the place where I keep my pictures?
+take me to where I keep my pictures
+can you show me my photos?
+open my picture folder
+show me my videos
+take me to downloads
+```
+
+These are bounded browsing grammars for known XDG concepts, not a general action
+parser. `how do I open Pictures in Ubuntu?`, `show me how to read data.js`, and
+`tell me about photography` remain chat. `launch a photo editor` stays unsupported.
+
+Owner live testing, using a folder you explicitly choose to authorize:
+
+```text
+open downloads
+open portfolio
+open images
+go back
+open data.js
+what's in data.js?
+what have in data.js
+read the index file
+explain data.js
+summarize index.html
+open portfolio.zip
+open .zip file
+go back
+go home
+FRIDAY, can you take me to the place where I keep my pictures?
+```
+
+Folder/file examples require those entries in the returned listing. Expect fresh
+read approval after Allow once on the parent; Deny produces no body/explanation.
+Direct reads/listings cost zero Qwen calls. Explanations use the existing local
+qwen3:4b through ModelManager/native synchronization. No files are executed.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_file_references.py'
+.venv/bin/python -B -m unittest discover -s tests
+PYTHONPATH=. .venv/bin/python -B tests/phase6c_demo.py
+```
