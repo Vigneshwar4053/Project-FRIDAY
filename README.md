@@ -1,4 +1,4 @@
-# FRIDAY v0.4 Phase 5 — Safe Tool Routing + CLI Integration
+# FRIDAY v0.4 Phase 6A — Multi-Folder Filesystem Access
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -432,7 +432,8 @@ CLI user message -> FridayAssistant -> deterministic ToolRouter
 The production CLI composes a fresh registry, file/system/computation tools,
 default permission policy, router and presenter. `settings.project_root` is an
 explicit absolute project path derived from the installed repository location,
-independent of working directory and user text. It is the sole allowed file root.
+independent of working directory and user text. It is always an allowed file root.
+Additional read-only roots are opt-in; see Phase 6A below.
 File-size and Phase 2 descriptor/no-symlink protections still apply. Direct
 `FridayAssistant` construction without injected routing stays compatible.
 
@@ -451,11 +452,11 @@ Supported narrow routes (case-insensitive intent phrases, preserved file paths):
 
 Numeric routes support the Phase 4 operation names and comma-separated signed
 real/scientific numeric literals. Subtract/divide/power/percentage still require
-exactly two operands. No expressions are evaluated. Read requests accept a single
-unquoted token containing a dot or slash; spaces in filenames, pronouns and
-ambiguous compound requests are not guessed. Absolute and traversal read requests
-are recognized but rejected by the file boundary. Disk/list routes always use the
-configured project root; arbitrary user-provided disk paths are not routed.
+exactly two operands. No expressions are evaluated. Read requests preserve
+unquoted paths, including spaces when a dot or slash is present; single-token extensionless `read` requests are also recognized. Pronouns
+and ambiguous prose are not guessed. Absolute and traversal filesystem requests
+are recognized and checked by the file boundary. Directory routes accept explicit
+paths and folder aliases. Disk routes still use only the configured project root.
 
 **Unmatched normal conversation uses Qwen. Matched tool failures never do.**
 The presenter formats actual results directly, with a `[Tool: name]` source label.
@@ -483,8 +484,8 @@ conversation handling as chat; routed queries do not acquire the model semaphore
 Presentation escapes terminal controls and limits display to 12,000 characters,
 with directory listings capped at 100 displayed entries. Files within the allowed
 root may contain sensitive information; this is a local assistant, not a secrets
-filter. Underlying Phase 2 directory enumeration is still unbounded. There is no
-semantic intent model, autonomous loop, general command parser, interactive
+filter. Phase 6A also bounds directory enumeration before collecting results.
+There is no semantic intent model, autonomous loop, general command parser, interactive
 approval or tool auditing. Broad synonyms and unsupported path syntax may use
 normal chat, whose suggestions do not execute. A future phase can expand routes
 and approval after review.
@@ -553,3 +554,63 @@ The core depends on the provider interface rather than Ollama. Future milestones
 may add ChromaDB retrieval, a scheduler, reviewed system tools and interactive approval,
 coding/cybersecurity agents, research/Gemini providers, Whisper, Piper, a React UI,
 and plugins. None are implemented in this milestone.
+
+
+## Multi-folder filesystem access (v0.4 Phase 6A)
+
+The project root remains enabled. No Downloads, Documents, Desktop, Pictures,
+Videos or other personal folder is automatically authorized. To explicitly opt in,
+edit trusted `Settings.filesystem_read_roots` in `friday/config/settings.py`, for
+example:
+
+```python
+filesystem_read_roots: tuple[Path | str, ...] = ("~/Downloads", "~/Documents")
+filesystem_max_directory_entries: int = 100
+```
+
+Only enable folders you want FRIDAY to read. Configured roots must exist and be
+accessible directories; invalid configuration fails closed at composition. Paths
+expand the current user's home without a hardcoded username. The CLI uses this
+configuration directly; there is no environment-variable or chat-based authorization.
+
+`create_tool_runtime` builds one `FileSystemPolicy` with the project first, all
+explicit read roots, and only the project as a write root. Default ToolManager
+permissions still require approval for writes; chat cannot dispatch writes.
+Even an explicitly write-allowing manager cannot write into additional read-only
+roots. Low-level callers can configure separate `write_roots` explicitly; these
+must be configured read roots. Omitting `write_roots` enables only the first root
+for policy-level writes, subject to ToolManager permission.
+
+Relative paths start in the project. Additional read-root basenames are
+case-insensitive aliases; the project basename never shadows its source package:
+`Downloads/notes.txt` works only when its root is authorized. Duplicate aliases or
+aliases colliding with project entries fail safely; use the absolute path instead.
+Absolute paths and `~/` paths retain the existing lexical/canonical containment,
+no-parent-traversal, descriptor-relative no-symlink, singly linked regular-file,
+strict UTF-8, nonblocking-special-file and 1 MiB read protections.
+
+Examples: `list files in Downloads`, `what files are in ~/Downloads`,
+`show files in Documents`, `list /absolute/authorized/folder`,
+`read ~/Downloads/notes.txt`, `read friday/tools/router.py`.
+Explicit unauthorized list/read requests finish with a safe tool failure and
+**never fall back to Qwen**, including `list files in /etc` and `read /etc/passwd`.
+This phase does not launch applications; the legacy `open file.txt` spelling is
+still a text-read route.
+
+Enumeration collects at most `filesystem_max_directory_entries` entries (default
+100), consumes at most one additional entry to detect truncation, and stats only
+the collected entries without following symlinks. Results contain `entries`,
+`truncated`, `limit` and `path`. Only that bounded subset is sorted; it is not a
+globally sorted page, and directory iteration order may vary. Names are JSON-escaped
+for terminal controls, line breaks and undecodable filesystem bytes. Disappearing
+entries fail closed with no partial result. The presenter shows at most 100 entries
+and 12,000 body characters, with explicit omission/truncation indicators.
+
+Authorized roots are not secret filters: readable credentials inside them remain
+readable. Displayed text is saved in CLI memory and can appear in later model
+context. Mounts, malicious filesystems and concurrent directory renames remain
+limitations of the existing path-boundary design; it is not an OS sandbox.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_multi_folder.py' -v
+```

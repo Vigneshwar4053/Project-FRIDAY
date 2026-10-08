@@ -6,6 +6,9 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Settings:
     project_root: Path = Path(__file__).resolve().parents[2]
+    # Trusted opt-in configuration only; no personal directories enabled by default.
+    filesystem_read_roots: tuple[Path | str, ...] = ()
+    filesystem_max_directory_entries: int = 100
     assistant_name: str = "FRIDAY"
     user_name: str = "Vigneshwar"
     ollama_base_url: str = "http://127.0.0.1:11434"

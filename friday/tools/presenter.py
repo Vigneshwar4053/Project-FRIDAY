@@ -29,8 +29,8 @@ class ToolPresenter:
                               ('Swap total', 'swap_total'), ('Swap free', 'swap_free')])
         elif name == 'list_directory':
             entries = data['entries'][:MAX_LISTED_ENTRIES]
-            body = 'Project entries:\n' + '\n'.join(f'{entry["name"]} ({entry["type"]})' for entry in entries)
-            if len(data['entries']) > len(entries):
+            body = 'Directory entries:\n' + '\n'.join(f'{entry["name"]} ({entry["type"]})' for entry in entries)
+            if data.get('truncated', False) or len(data['entries']) > len(entries):
                 body += '\n[Additional entries omitted]'
         elif name == 'read_file':
             body = data['content'][:MAX_PRESENTED_CHARACTERS]

@@ -52,6 +52,11 @@ class ToolRouter:
                 return RouteDecision(True, name, args)
         if re.match(r'^(?:run|call|execute)\s+tool\b', normalized):
             return RouteDecision(True, message='Generic tool dispatch is not supported; writes are not enabled through chat.')
+        listing = re.fullmatch(
+            r'(?:list(?:\s+files(?:\s+in)?)?|show\s+files\s+in|what\s+files\s+are\s+in)\s+(.+)',
+            text, re.IGNORECASE | re.DOTALL)
+        if listing:
+            return RouteDecision(True, 'list_directory', {'path': listing.group(1)})
         write = re.fullmatch(r'(?:write|overwrite|create|save|modify|edit|delete|rename)\s+(.+)', normalized)
         if write and ('file' in write.group(1).split() or
                       any('.' in token or '/' in token for token in write.group(1).split())):
@@ -59,10 +64,10 @@ class ToolRouter:
         match = re.fullmatch(r'(?:is ([A-Za-z0-9][A-Za-z0-9_.-]{0,14}) running|check ([A-Za-z0-9][A-Za-z0-9_.-]{0,14}) process)', text, re.IGNORECASE)
         if match:
             return RouteDecision(True, 'process_status', {'name': match.group(1) or match.group(2)})
-        match = re.fullmatch(r'(read|show|open)\s+(\S+)', text, re.IGNORECASE)
+        match = re.fullmatch(r'(read|show|open)\s+(.+)', text, re.IGNORECASE | re.DOTALL)
         if match:
             path = match.group(2)
-            if '.' in path or '/' in path:
+            if '.' in path or '/' in path or (match.group(1).lower() == 'read' and not any(c.isspace() for c in path)):
                 return RouteDecision(True, 'read_file', {'path': path})
         percent = re.fullmatch(r'what is (\S+) percent of (\S+)', text, re.IGNORECASE)
         calculation = re.fullmatch(r'(?:calculate\s+)?(?:the\s+)?(add|subtract|multiply|divide|power|sum|mean|median|min|max|count|sort|percentage)(?:\s+of)?\s+(.+)', text, re.IGNORECASE)

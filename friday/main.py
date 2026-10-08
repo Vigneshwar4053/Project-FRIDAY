@@ -17,7 +17,10 @@ from friday.tools.router import ToolRouter
 
 def create_tool_runtime(configuration):
     """Production composition, with explicit project roots and isolated registries."""
-    boundary = FileSystemPolicy([configuration.project_root])
+    boundary = FileSystemPolicy(
+        [configuration.project_root, *configuration.filesystem_read_roots],
+        write_roots=[configuration.project_root],
+        max_directory_entries=configuration.filesystem_max_directory_entries)
     registry = ToolRegistry()
     register_file_tools(registry, boundary)
     register_system_tools(registry, boundary)

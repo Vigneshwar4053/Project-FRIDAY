@@ -1,5 +1,6 @@
 """Bounded file tools; register explicitly and invoke only via ToolManager."""
 from datetime import datetime, timezone
+import json
 import os
 import stat
 
@@ -35,9 +36,19 @@ class ListDirectoryTool(_FileTool):
     def execute(self, arguments):
         with self.policy.open(arguments['path'], os.O_RDONLY | os.O_DIRECTORY) as (fd, path):
             with os.scandir(fd) as entries:
-                data = sorted(({'name': entry.name, 'type': _type(entry.stat(follow_symlinks=False).st_mode)}
-                               for entry in entries), key=lambda entry: entry['name'])
-        return {'path': path, 'entries': data}
+                data = []
+                truncated = False
+                for entry in entries:
+                    if len(data) == self.policy.max_directory_entries:
+                        truncated = True
+                        break
+                    # JSON quoting escapes controls, surrogates and line breaks.
+                    name = json.dumps(entry.name, ensure_ascii=True)[1:-1]
+                    data.append({'name': name,
+                                 'type': _type(entry.stat(follow_symlinks=False).st_mode)})
+                data.sort(key=lambda entry: entry['name'])
+        return {'path': path, 'entries': data, 'truncated': truncated,
+                'limit': self.policy.max_directory_entries}
 
 
 class ReadFileTool(_FileTool):
