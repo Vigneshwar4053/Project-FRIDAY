@@ -42,6 +42,11 @@ class NavigationManager:
             target = self.history[-1]
             return NavigationPlan(ToolRequest("list_directory", {"path": target.path},
                 directory_guard=DirectoryGuard(target)), transition="back")
+        if text.casefold() in {'list this folder', 'list this directory'}:
+            if self.current is None:
+                return NavigationPlan(message='Please list a specific folder first.')
+            return NavigationPlan(ToolRequest('list_directory', {'path': self.current.path},
+                directory_guard=DirectoryGuard(self.current)))
         match = re.fullmatch(
             r"(open|enter|go into|read|show(?: me)?|what(?:'s| is) in|what have in|"
             r"explain(?: what's inside)?|summarize)\s+(.+)", text, re.I)

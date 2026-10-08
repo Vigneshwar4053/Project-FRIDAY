@@ -166,7 +166,7 @@ class IntentTranslator:
         self.registry = registry
         self.locations = locations if locations is not None else SemanticLocationResolver()
 
-    def translate(self, message, *, reference=None):
+    def translate(self, message, *, reference=None, profile=None):
         if (type(message) is not str or not message.strip() or
                 len(message) > MAX_REQUEST_CHARACTERS):
             return IntentResult('unsupported', text='Intent request exceeds its input limits.')
@@ -189,8 +189,8 @@ class IntentTranslator:
         mode = getattr(self.manager.provider, 'intent_mode', None)
         try:
             with (mode() if callable(mode) else nullcontext()):
-                raw = self.manager.generate([{'role': 'system', 'content': prompt},
-                                             {'role': 'user', 'content': message}])
+                messages = [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': message}]
+                raw = self.manager.generate(messages, profile=profile) if profile is not None else self.manager.generate(messages)
             result = validate_response(raw, self.registry, locations=self.locations, message=message)
             if result.request is not None and not result.semantic and not grounded_request(result.request, message, reference):
                 return IntentResult('clarification', text='Please specify the exact file or folder path.')

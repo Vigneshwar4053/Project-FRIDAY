@@ -1,4 +1,8 @@
 """Synchronous job lifecycle boundary around a single model provider."""
+from contextlib import nullcontext
+import json
+from time import perf_counter_ns
+from friday.models.profile import InferenceProfile
 from friday.models.job import JobStatus, ModelJob, utc_now
 from friday.models.queue import ModelJobQueue
 from friday.models.registry import ModelRegistry
@@ -26,6 +30,8 @@ class ModelManager:
         self.last_job: ModelJob | None = None
         self.synchronization = synchronization if synchronization is not None else PythonSemaphore()
         self._owns_synchronization = synchronization is None
+        self.invocation_count = 0
+        self.model_request_ns = 0
         self._closed = False
         self._executing = False
 
@@ -51,10 +57,10 @@ class ModelManager:
         self._closed = True
 
     def create_job(self, messages: list[dict[str, str]], *, model: str | None = None,
-                   priority: int = 0) -> ModelJob:
+                   priority: int = 0, profile: InferenceProfile | None = None) -> ModelJob:
         self._require_open()
         return ModelJob(model=model if model is not None else self.registry.current_model,
-                        messages=messages, priority=priority)
+                        messages=messages, priority=priority, profile=profile)
 
     def submit_job(self, job: ModelJob) -> ModelJob:
         self._require_open()
@@ -85,11 +91,28 @@ class ModelManager:
                 raise ProviderError('The requested model is not registered.')
             if job.model != self.provider_model:
                 raise ProviderError('This runtime provider is bound to a different model.')
+            if job.profile is not None:
+                size = len(json.dumps(job.messages, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+                if size > job.profile.input_byte_limit:
+                    raise ProviderError('Request context exceeds its configured input budget.')
             with self.synchronization:
                 self.registry.mark_active(job.model)
-                response = self.provider.chat([dict(message) for message in job.messages])
+                mode = nullcontext()
+                if job.profile is not None:
+                    if getattr(self.provider, 'supports_inference_profiles', False) is not True:
+                        raise ProviderError('The configured provider does not support bounded inference profiles.')
+                    mode = self.provider.inference_profile(job.profile)
+                with mode:
+                    self.invocation_count += 1
+                    started = perf_counter_ns()
+                    try:
+                        response = self.provider.chat([dict(message) for message in job.messages])
+                    finally:
+                        self.model_request_ns += max(0, perf_counter_ns() - started)
             if not isinstance(response, str) or not response.strip():
                 raise ProviderError('The model returned no final answer.')
+            if job.profile is not None and len(response.encode("utf-8")) > 65536:
+                raise ProviderError("Model answer exceeded its response budget.")
             job.result = response.strip()
             job.status = JobStatus.COMPLETED
         except SynchronizationError as exc:
@@ -112,13 +135,15 @@ class ModelManager:
             self._executing = False
         return job
 
-    def generate(self, messages: list[dict[str, str]]) -> str:
+    def generate(self, messages: list[dict[str, str]], *, profile: InferenceProfile | None = None) -> str:
         """Run this conversational request immediately; leave unrelated jobs queued.
 
         This convenience path explicitly executes its supplied job. Use
         execute_next() to drain queued jobs in priority/FIFO order.
         """
-        job = self.submit_job(self.create_job(messages))
+        if profile is not None and not isinstance(profile, InferenceProfile):
+            raise ProviderError("Invalid inference profile; no model request was made.")
+        job = self.submit_job(self.create_job(messages, profile=profile))
         self.execute_job(job)
         if job.status == JobStatus.FAILED:
             raise ProviderError(job.error)
