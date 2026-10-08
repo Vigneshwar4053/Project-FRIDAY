@@ -8,6 +8,8 @@ from types import MappingProxyType
 
 from friday.tools.computation import MAX_VALUES
 from friday.tools.models import JSONValue
+from friday.tools.locations import (SemanticLocationResolver, LocationResolutionError,
+                                    command_text, browsing_guard, instructional_question)
 
 MAX_ROUTED_MESSAGE_LENGTH = 4096
 MAX_NUMBER_TOKEN_LENGTH = 32
@@ -36,11 +38,13 @@ class RouteDecision:
 class ToolRouter:
     def __init__(self, project_root):
         self.project_root = str(Path(project_root).resolve(strict=True))
+        self.locations = SemanticLocationResolver()
 
     def route(self, message):
         if len(message) > MAX_ROUTED_MESSAGE_LENGTH:
             return RouteDecision(True, message='Request is too long; maximum is 4096 characters.')
-        text = message.strip().rstrip('?').strip()
+        raw_text = command_text(message)
+        text = raw_text.rstrip('?').strip()
         normalized = ' '.join(text.lower().split())
         if normalized in {'show authorized folders', 'list authorized folders'}:
             return RouteDecision(True, permission_command='show')
@@ -51,6 +55,20 @@ class ToolRouter:
                                  permission_command='revoke' if permission.group(1).split()[0].lower() == 'revoke' else 'authorize')
         if normalized in {'revoke access to', 'always allow'}:
             return RouteDecision(True, permission_command='revoke' if normalized.startswith('revoke') else 'authorize')
+        guard = browsing_guard(text)
+        if guard:
+            return RouteDecision(True, message=guard)
+        if instructional_question(text):
+            return RouteDecision(False)
+        location = self.locations.fast_location(text)
+        if location is not None:
+            try:
+                return RouteDecision(True, 'list_directory', {'path': self.locations.resolve(location)})
+            except LocationResolutionError as exc:
+                return RouteDecision(True, message=str(exc))
+        if raw_text.startswith(('/', '~/')) and not any(c.isspace() for c in raw_text):
+            # A bare explicit path means browse exactly that path, never a home alias.
+            return RouteDecision(True, 'list_directory', {'path': raw_text})
         routes = {
             'memory_info': {'check my ram', 'show memory usage', 'how much ram is available', 'check swap'},
             'system_info': {'system info', 'what os am i running', 'show kernel information', 'what architecture is this machine'},

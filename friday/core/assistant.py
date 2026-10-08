@@ -1,6 +1,9 @@
 """Session conversation flow, independent of transport and terminal I/O."""
+import re
 from friday.config.settings import settings
+from friday.core.navigation import NavigationManager
 from friday.core.file_context import TemporaryFileContext, TEMPORARY_CONTEXT_INSTRUCTIONS
+from friday.tools.intent_translator import IntentTranslator, needs_translation
 from friday.tools.models import ToolRequest
 from friday.tools.manager import ToolManager
 from friday.tools.presenter import ToolPresenter
@@ -31,12 +34,16 @@ class FridayAssistant:
         self.tool_router = tool_router
         self.tool_manager = tool_manager
         self.tool_presenter = tool_presenter if tool_presenter is not None else ToolPresenter()
+        self.intent_translator = (IntentTranslator(self.model_manager, tool_manager.registry,
+                                                     locations=tool_router.locations)
+                                  if tool_manager is not None else None)
         self.memory = memory
         self.recent_memory_limit = recent_memory_limit
         self.previous_session: Session | None = None
         self.session_id: int | None = None
         self._restored_message_count = 0
         self.file_context = TemporaryFileContext()
+        self.navigation = NavigationManager(tool_router.project_root) if tool_router else None
         self.messages: list[dict[str, str]] = [
             {"role": "system", "content": system_prompt}
         ]
@@ -129,6 +136,27 @@ class FridayAssistant:
                 self.memory.end_session(self.session_id)
         finally:
             self.file_context.clear()
+            if self.navigation is not None:
+                self.navigation.clear()
+
+    def _private_tool_response(self, request, *, translated=False, transition="visit", explanation=None):
+        self.file_context.clear()
+        result = self.tool_manager.execute(request)
+        if self.navigation is not None:
+            self.navigation.remember(request, result, transition)
+        response = self.tool_presenter.format(result)
+        if translated and not result.success and request.tool_name in {'read_file', 'file_info'}:
+            response += '\nPlease specify an accessible exact file path.'
+        if request.tool_name == 'read_file' and result.success:
+            self.file_context.remember(result.data['path'], result.data['content'])
+            response += '\n[Session-only file context; not saved]'
+            if explanation is not None:
+                try:
+                    return self.respond(explanation)
+                except (ProviderError, KeyboardInterrupt):
+                    self.file_context.clear()
+                    return response + '\nExplanation unavailable; no model retry was made.'
+        return response
 
     def respond(self, user_message: str) -> str:
         route = self.tool_router.route(user_message) if self.tool_router is not None else None
@@ -145,18 +173,35 @@ class FridayAssistant:
             if access is None:
                 return 'Filesystem permission management is unavailable.'
             return access.command(route.permission_command, route.arguments.get('path'))
+        if self.navigation is not None and (not route.matched or
+                route.tool_name in {"read_file", "list_directory"} or route.message is not None):
+            plan = self.navigation.plan(user_message, self.tool_router.locations)
+            if plan is not None:
+                self.file_context.clear()
+                if plan.request is None:
+                    return plan.message
+                return self._private_tool_response(plan.request, transition=plan.transition, explanation=plan.explanation)
         if route is not None and route.matched and route.message is not None:
             self.file_context.clear()
             return route.message
-        if route is not None and route.tool_name in {'read_file', 'list_directory'}:
+        if (route is not None and not route.matched and
+                not TemporaryFileContext.is_followup(user_message) and needs_translation(user_message)):
+            reference = (self.file_context.reference if
+                         re.search(r'\b(this|that) file\b', user_message, re.I) else None)
+            intent = self.intent_translator.translate(user_message, reference=reference)
             self.file_context.clear()
-            request = ToolRequest(route.tool_name, route.arguments)
-            result = self.tool_manager.execute(request)
-            response = self.tool_presenter.format(result)
-            if route.tool_name == 'read_file' and result.success:
-                self.file_context.remember(result.data['path'], result.data['content'])
-                response += '\n[Session-only file context; not saved]'
-            return response
+            if intent.request is None:
+                # Candidate turns are session-only, even when classified as chat:
+                # the model may echo private paths from the current request.
+                return intent.text
+            plan = self.navigation.translated_plan(intent.request, self.tool_router.locations)
+            if plan is not None:
+                if plan.request is None:
+                    return plan.message
+                return self._private_tool_response(plan.request, translated=True, transition=plan.transition, explanation=plan.explanation)
+            return self._private_tool_response(intent.request, translated=True)
+        if route is not None and route.tool_name in {'read_file', 'list_directory'}:
+            return self._private_tool_response(ToolRequest(route.tool_name, route.arguments))
         temporary = self.file_context.take_for(user_message)
         context = self.messages[1:]
         if self.memory is not None:

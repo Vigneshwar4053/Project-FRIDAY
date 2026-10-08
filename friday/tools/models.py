@@ -83,11 +83,46 @@ class ToolSpec:
 
 
 @dataclass(frozen=True)
+class DirectoryIdentity:
+    """A trusted listing's identity hint, never an authorization grant."""
+    path: str
+    device: int
+    inode: int
+
+    def __post_init__(self):
+        from pathlib import PurePosixPath
+        if (type(self.path) is not str or not self.path.startswith('/') or
+                '\x00' in self.path or '..' in PurePosixPath(self.path).parts or
+                len(self.path.encode('utf-8')) > 4096 or
+                any(type(value) is not int or value < 0 for value in (self.device, self.inode))):
+            raise ValueError('Invalid directory identity.')
+
+
+@dataclass(frozen=True)
+class DirectoryGuard:
+    """Request-local stale-target check; cannot expand roots or permissions."""
+    target: DirectoryIdentity
+    parent: DirectoryIdentity | None = None
+    operation: str = "list_directory"
+
+    def __post_init__(self):
+        from pathlib import PurePosixPath
+        if self.operation not in {"list_directory", "read_file"}:
+            raise ValueError("Listing guards support only read/list operations.")
+        if not isinstance(self.target, DirectoryIdentity):
+            raise ValueError('A directory guard needs a typed target.')
+        if self.parent is not None and (not isinstance(self.parent, DirectoryIdentity) or
+                PurePosixPath(self.target.path).parent != PurePosixPath(self.parent.path)):
+            raise ValueError('Directory guard parent must be the immediate parent.')
+
+
+@dataclass(frozen=True)
 class ToolRequest:
     tool_name: str
     arguments: Mapping[str, JSONValue]
     request_id: str = field(default_factory=lambda: str(uuid4()))
     created_at: datetime = field(default_factory=_now, init=False)
+    directory_guard: DirectoryGuard | None = None
 
     def __post_init__(self):
         if not isinstance(self.tool_name, str) or not self.tool_name.strip():
@@ -96,6 +131,10 @@ class ToolRequest:
             raise ValueError('A request needs an identifier.')
         if not isinstance(self.arguments, Mapping):
             raise ValueError('Tool arguments must be an object.')
+        if self.directory_guard is not None and (not isinstance(self.directory_guard, DirectoryGuard) or
+                self.tool_name != self.directory_guard.operation or
+                self.arguments.get('path') != self.directory_guard.target.path):
+            raise ValueError('Listing guards bind only an exact read/list request.')
         object.__setattr__(self, 'arguments', _freeze(self.arguments))
 
 
@@ -108,6 +147,14 @@ class ToolStatus(StrEnum):
     APPROVAL_REQUIRED = 'approval_required'
 
 
+class ToolErrorCategory(StrEnum):
+    PERMISSION_DENIED = 'permission_denied'
+    UNAVAILABLE_PATH = 'unavailable_path'
+    NOT_DIRECTORY = 'not_directory'
+    BLOCKED_PATH = 'blocked_path'
+    UNSUPPORTED_CONTENT = 'unsupported_content'
+
+
 @dataclass(frozen=True)
 class ToolResult:
     tool_name: str
@@ -118,8 +165,12 @@ class ToolResult:
     finished_at: datetime
     data: JSONValue = None
     error: str | None = None
+    error_category: ToolErrorCategory | None = None
 
     def __post_init__(self):
+        if self.error_category is not None and (not isinstance(self.error_category, ToolErrorCategory) or
+                                                self.status is ToolStatus.SUCCESS):
+            raise ValueError('Only failures may contain a typed error category.')
         if not isinstance(self.status, ToolStatus):
             raise ValueError('A tool result needs a ToolStatus.')
         if self.status is ToolStatus.SUCCESS:

@@ -35,6 +35,7 @@ class ListDirectoryTool(_FileTool):
 
     def execute(self, arguments):
         with self.policy.open(arguments['path'], os.O_RDONLY | os.O_DIRECTORY) as (fd, path):
+            directory_metadata = os.fstat(fd)
             with os.scandir(fd) as entries:
                 data = []
                 truncated = False
@@ -46,11 +47,20 @@ class ListDirectoryTool(_FileTool):
                         continue
                     # JSON quoting escapes controls, surrogates and line breaks.
                     name = json.dumps(entry.name, ensure_ascii=True)[1:-1]
-                    data.append({'name': name,
-                                 'type': _type(entry.stat(follow_symlinks=False).st_mode)})
+                    metadata = entry.stat(follow_symlinks=False)
+                    item = {'name': name, 'type': _type(metadata.st_mode)}
+                    if item['type'] in {'directory', 'file'} and all(
+                            type(getattr(metadata, key, None)) is int for key in ('st_dev', 'st_ino')):
+                        item['identity'] = {'device': metadata.st_dev, 'inode': metadata.st_ino}
+                    data.append(item)
                 data.sort(key=lambda entry: entry['name'])
         return {'path': path, 'entries': data, 'truncated': truncated,
-                'limit': self.policy.max_directory_entries}
+                'limit': self.policy.max_directory_entries,
+                'directory_identity': {'device': directory_metadata.st_dev, 'inode': directory_metadata.st_ino}}
+
+
+class UnsupportedFileContent(ValueError):
+    """The verified regular file does not contain supported UTF-8 text."""
 
 
 class ReadFileTool(_FileTool):
@@ -70,11 +80,16 @@ class ReadFileTool(_FileTool):
                 chunks.append(chunk)
                 remaining -= len(chunk)
             content = b''.join(chunks)
-            if len(content) > self.policy.max_file_size or b'\x00' in content:
-                raise ValueError('Oversized or non-text file.')
+            if len(content) > self.policy.max_file_size:
+                raise ValueError('File exceeds the size limit.')
+            if b'\x00' in content:
+                raise UnsupportedFileContent('Unsupported non-text content.')
             if self.policy.sensitive.excluded_content(content):
                 raise ValueError('Content is excluded by privacy policy.')
-            text = content.decode('utf-8', errors='strict')
+            try:
+                text = content.decode('utf-8', errors='strict')
+            except UnicodeDecodeError:
+                raise UnsupportedFileContent('Unsupported non-text content.') from None
         return {'path': path, 'content': text, 'size': len(content), 'encoding': 'utf-8'}
 
 

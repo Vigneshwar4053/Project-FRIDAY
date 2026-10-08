@@ -20,6 +20,10 @@ class TemporaryFileContext:
         self._payload = None
 
     @property
+    def reference(self):
+        return json.loads(self._payload)['source'] if self._payload is not None else None
+
+    @property
     def byte_count(self):
         return len(self._payload.encode('utf-8')) if self._payload is not None else 0
 

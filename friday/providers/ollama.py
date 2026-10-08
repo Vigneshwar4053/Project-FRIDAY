@@ -1,4 +1,5 @@
 """Local Ollama HTTP adapter, using only the standard library."""
+from contextlib import contextmanager
 import json
 import re
 import socket
@@ -45,10 +46,22 @@ class OllamaProvider(ModelProvider):
         self.model = model
         self.timeout = timeout
         self.think = think
+        self._intent_mode = False
+
+    @contextmanager
+    def intent_mode(self):
+        previous = self._intent_mode
+        self._intent_mode = True
+        try:
+            yield
+        finally:
+            self._intent_mode = previous
 
     def chat(self, messages: list[dict[str, str]]) -> str:
         payload = {"model": self.model, "messages": messages,
                    "stream": False, "think": self.think}
+        if self._intent_mode:
+            payload.update(format='json', think=False, options={'num_predict': 512})
         request = urllib.request.Request(
             f"{self.base_url}/api/chat",
             data=json.dumps(payload).encode("utf-8"),
@@ -56,7 +69,10 @@ class OllamaProvider(ModelProvider):
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                result = json.loads(response.read().decode("utf-8"))
+                body = response.read(65537) if self._intent_mode else response.read()
+                if self._intent_mode and len(body) > 65536:
+                    raise ProviderError("Intent response exceeded its transport limit.")
+                result = json.loads(body.decode("utf-8"))
         except urllib.error.HTTPError as exc:
             exc.close()
             if exc.code == 404:
@@ -83,8 +99,10 @@ class OllamaProvider(ModelProvider):
         content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, str):
             raise ProviderError("Ollama returned an invalid final answer.")
-        content = _final_content(content)
+        # Intent wrappers and extra text must be rejected, not repaired into calls.
+        content = content.strip() if self._intent_mode else _final_content(content)
         if not content:
             raise ProviderError("Ollama returned no final answer. Check model support for think=false.")
-        # Never return message.thinking, raw content, or reasoning-only output.
+        # Never expose message.thinking. Ordinary chat hides marked reasoning;
+        # intent content goes only to the strict validator before display/execution.
         return content

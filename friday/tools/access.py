@@ -11,6 +11,10 @@ from friday.tools.filesystem import OutsideRoots, regular_file
 from friday.tools.grants import FolderGrant, approved_folder, directory_descriptor
 
 
+class FilesystemAuthorizationDenied(ValueError):
+    """A direct filesystem permission decision denied this operation."""
+
+
 class FolderDecision(StrEnum):
     ALLOW_ONCE = 'allow_once'
     ALLOW_PERSISTENT = 'allow_persistent'
@@ -93,19 +97,21 @@ class FilesystemAccess:
         if request.tool_name not in {'read_file', 'list_directory'}:
             yield
             return
-        with self.boundary.request_access(request.tool_name):
+        with self.boundary.request_access(request.tool_name, directory_guard=request.directory_guard):
             try:
                 self.boundary.resolve(request.arguments['path'])
             except OutsideRoots:
                 target = self._target(request)
+                self.boundary.check_directory_guard(request.arguments['path'])
                 decision = self._decision(target)
                 if decision is FolderDecision.DENY:
-                    raise ValueError('Filesystem authorization denied.')
+                    raise FilesystemAuthorizationDenied('Filesystem authorization denied.')
                 if decision is FolderDecision.ALLOW_PERSISTENT:
                     self.store.add(target.folder)
                 # Even permanent approval binds this execution to the prompted
                 # target and inode. The grant disappears on every exit path.
-                with self.boundary.request_access(request.tool_name, target):
+                with self.boundary.request_access(request.tool_name, target,
+                                                  directory_guard=request.directory_guard):
                     yield
                 return
             yield

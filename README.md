@@ -1,4 +1,4 @@
-# FRIDAY v0.4 Phase 6B — Interactive Permissions and Privacy
+# FRIDAY v0.4 Phase 6C — Voice-Ready Hybrid Tool Routing
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
@@ -10,7 +10,7 @@ cybersecurity, research, planning, and automation advice.
 - Local HTTP model provider, connection/response error handling, and clean exits.
 - Requests `think: false` and displays only final answer content. The provider
   also removes embedded thinking blocks when Qwen ignores that option.
-- Deterministic read-only tools through terminal chat; no cloud APIs or extra Python dependencies. Suggested
+- Hybrid read-only tools through terminal chat (deterministic routing first, bounded Qwen proposals for unmatched action-like requests); no cloud APIs or extra Python dependencies. Suggested
   commands must be run by the user. Successful ordinary chat turns are saved;
   filesystem turns and temporary file explanations are not saved.
 - Interactive read-only folder permissions, revocation, conservative sensitive-path
@@ -780,8 +780,9 @@ An explicit immediate follow-up can use that snapshot once: `explain that code`,
 `explain this code`, `explain that file`, `explain this file`, `explain the file`,
 `summarize that file`, `summarize this file`, `review that code`, `analyze that code`,
 or `what does that code do`. **This intentionally sends the bounded file snapshot
-to the configured model for that follow-up.** No live model call is made to read,
-list, ask for permission or interpret a permission choice.
+to the configured model for that follow-up.** Deterministic reads/listings and all permission prompts/choices make no model call.
+Phase 6C may use one intent-model call before an unmatched semantic read/list request;
+it receives no file body and never interprets permission choices.
 
 The snapshot is framed as untrusted JSON data in a user message with explicit
 system instructions to ignore embedded instructions/approvals. The explanation
@@ -800,7 +801,7 @@ be identified; review legacy data before sensitive use. Old Phase 6A databases/b
 still contain previously saved file bodies; this phase does not silently purge
 user data or promise secure RAM/disk erasure.
 
-### Tests, demo and Phase 6C roadmap
+### Phase 6B regression tests and demo
 
 ```bash
 .venv/bin/python -B -m unittest discover -s tests -p 'test_filesystem_permissions.py' -v
@@ -815,10 +816,363 @@ No personal documents or real user files are modified. Live Qwen inference is a
 separate integration check; explanation tests prove the supplied context/privacy
 boundaries with a deterministic provider.
 
-Phase 6C should add reviewed user-owned configuration/recovery tools, explicit
-opt-in cleanup of legacy retained filesystem turns, safe error categories and
-bounded search/pagination, plus broader response/history/time budgets. Phase 6D
-should stress cross-process revocation, crashes, filesystem races, malformed stores
-and prompt injection. Phase 6E requires a separate approved-app/MIME/EXECUTE
-permission design; read grants never authorize application launching or Trash
-operations. No desktop launcher is implemented here.
+Phase 6B privacy/store recovery limitations remain applicable. Hybrid intent routing
+is documented below; bounded session navigation is described below; search and desktop opening remain separate phases.
+
+## Phase 6C: voice-ready hybrid natural-language routing
+
+Deterministic routing remains first: recognized commands, invalid requests and
+refusals never reach Qwen as fallback. A small semantic location resolver adds
+simple known-folder browsing without model inference. Unfamiliar action-like
+phrasing uses one structured Qwen response through the existing ModelManager,
+Ollama provider and native POSIX mutex. Ordinary chat retains its memory-aware
+conversation flow. All tools use the same ToolManager and permission system.
+
+```text
+User → deterministic router → simple folder concept → trusted location resolver
+                           └→ unmatched → Qwen proposal → strict validation
+                                                          + location resolution
+                                         ↓
+                         ToolRequest → ToolManager → PermissionPolicy
+                                         ↓
+                         Phase 6B filesystem access → registered tool
+```
+
+### Semantic locations and voice input
+
+| Spoken concept | XDG mapping | Default only when mapping is absent |
+|---|---|---|
+| photo / photos / picture / pictures | XDG_PICTURES_DIR | ~/Pictures |
+| videos | XDG_VIDEOS_DIR | ~/Videos |
+| downloads | XDG_DOWNLOAD_DIR | ~/Downloads |
+| documents | XDG_DOCUMENTS_DIR | ~/Documents |
+| music | XDG_MUSIC_DIR | ~/Music |
+| desktop | XDG_DESKTOP_DIR | ~/Desktop |
+
+`open photos`, `show my pictures`, `pictures`, `open videos`, `show downloads`,
+`open documents`, `open music`, and `open Desktop` use a small verb/alias grammar,
+not a collection of memorized sentences. `FRIDAY, open my photos.` is accepted
+as transcribed text. These requests cost **zero Qwen calls**. “Open” means list
+contents in this CLI; it never claims to launch an application.
+
+`can you show me my photos?`, `take me to my downloads`, and
+`FRIDAY, can you take me to the place where I keep my pictures?` now use the
+trusted fast path too. Unfamiliar requests such as `what's in my pictures folder?`,
+`show me where my videos are`, and `can you inspect my pictures folder?` retain
+the hybrid intent model.
+Trusted Python resolves the folder concept after strict proposal validation.
+A bare `pictures` also works after a clarification because it is a complete
+unambiguous new browsing request. No pending clarification/path guessing state is introduced. A separate bounded
+session navigation manager now remembers successful listings, as described below.
+
+The resolver reads only `$XDG_CONFIG_HOME/user-dirs.dirs`, or
+`~/.config/user-dirs.dirs` when that environment variable is absent. It parses
+bounded data: at most 16,384 bytes and 64 lines, double-quoted `XDG_*_DIR` entries,
+absolute paths or a literal leading `$HOME/`. Non-English folder names and spaces
+are supported. Comments and blank lines are allowed. No shell is run and arbitrary
+variable/command expansion is rejected. Config files and every parent are opened
+without following symlinks; special/hardlinked/oversized files, invalid UTF-8,
+controls, duplicate keys, traversal and malformed syntax fail closed. Backslash
+escape syntax and `${HOME}` expansion are deliberately unsupported. A malformed
+configuration does not silently select the English default. A mapping of `$HOME`
+(disabled folder), `/`, or a relative path is unavailable; no home/root listing is
+authorized. Missing directories are reported, never created or replaced.
+
+XDG mappings are location hints, **not permissions**. The resolver neither grants
+access nor opens folder contents. All resulting paths still pass through the
+existing sensitive-path policy, canonical containment, descriptor traversal,
+identity checks, permission prompt and file/list bounds. Configuration is reloaded
+on each resolution; no authorization is cached in the resolver. Semantic names
+use XDG directories; pre-existing deterministic configured-root aliases such as
+`list files in Downloads` retain their Phase 6A rules. Their ambiguity/conflict
+checks remain intact. Use an explicit path to distinguish those meanings. For
+revoking a localized XDG grant, use the canonical folder shown by `show authorized
+folders`; permission-management aliases retain their existing rules.
+
+Explicit paths stay exact: `/Videos` is different from `~/Videos`. A bare path is
+a deterministic directory-list request, preserving its spelling. It is never
+rewritten to a semantic home folder or localized XDG directory. Existing explicit
+file-reading commands still use their original routes. `play a video`,
+`launch the photo viewer`, and `open the Photos application` are unsupported
+application requests. `go back` and `return to the previous directory` revisit a
+successfully visited directory when one exists. `go back from /Downloads` and
+`enter that folder` without a named visible child remain unsupported or require
+clarification; they never invent a location. Instructional questions such as `how do I open Pictures in
+Ubuntu?` remain ordinary chat, including when prefixed with `FRIDAY,`.
+
+### Strict proposals, allowlist and permissions
+
+Existing path proposals remain supported:
+
+```json
+{"kind":"tool","tool_name":"list_directory","arguments":{"path":"~/Downloads"}}
+```
+
+The smallest semantic extension is exclusive to `list_directory`:
+
+```json
+{"kind":"tool","tool_name":"list_directory","arguments":{"location":"pictures"}}
+```
+
+`location` must be one of the bounded aliases above and grounded in exactly one
+concept in the current user request. It cannot coexist with `path`, apply to a
+read/write tool, replace an explicit path or reinterpret a launch/navigation
+request. Compatible model paths such as `~/Pictures` for a spoken `photos` request
+are normalized using the same resolver, not the model's home-directory guesses.
+Only the normalized existing `path` argument reaches ToolManager. Model output
+cannot set the internal semantic-evidence flag.
+
+Other exact forms remain `{"kind":"chat","response":"..."}`,
+`{"kind":"clarification","question":"..."}` and
+`{"kind":"unsupported","reason":"..."}`. Text is display-only. Unknown/duplicate
+fields, arrays, nested/multiple calls, non-JSON text/code wrappers, wrong types,
+unknown tools/arguments, authorization flags/tokens, controls, shell syntax and
+nonfinite JSON are rejected. Limits remain 4,096 input characters, 8,192 response
+bytes, depth 3, 16 keys, 4,096 bytes per path and 1,000 display-text characters.
+Invalid proposals fail safely without retry or execution.
+
+The eight registered read-only model choices remain `list_directory`, `read_file`,
+`file_info`, `system_info`, `memory_info`, `cpu_info`, `disk_usage`, `process_status`.
+Computation remains deterministic. Writes, shell execution, privileged actions,
+search and autonomous workflows are excluded. Allow once, always allow and deny
+still require direct CLI input. Always-allow grants remain folder/descendants
+**read/list only**, revocable; metadata tools retain static-root restrictions.
+Denial never invokes Qwen to find another way in. Sensitive files and contents
+remain blocked regardless of approval. No write/execute scope was added.
+
+Safe failure categories distinguish an unavailable path, non-directory target,
+permission denial and a blocked/invalid filesystem request. The presenter uses
+fixed messages from a typed category, never raw exception strings, private paths
+or permission-store details. The existing FAILED status/generic internal error
+remain compatible. Unsupported navigation and invalid proposals have separate
+controlled responses; malformed XDG configuration fails before tool dispatch.
+
+### Privacy and performance
+
+Semantic browsing, proposals, failures, permission prompts/choices and tool outputs
+are not saved to SQLite or ordinary chat context. Planning sees only the current
+request, compact schemas/aliases and an optional bounded immediate file path;
+no file bodies, listings, XDG mapping contents or permission-store records.
+Intent job messages/results/errors are scrubbed on success, failure and interruption.
+Ordinary chat remains persistent. One bounded private file snapshot still supports
+an explicit immediate explanation, intentionally outside intent planning and
+without persisting the body or derived answer. Old SQLite rows/backups can retain
+pre-Phase-6B file bodies/unlabelled derived text; nothing is silently deleted.
+
+Fast requests perform a small bounded XDG read and zero model calls. Unfamiliar
+wording uses one model call, with no planning/retry loop. A structured CHAT result
+includes its answer in that same call and remains session-only, avoiding duplicate
+inference and private-path retention at the cost of prior-chat context for that
+candidate. Existing Ollama intent bounds remain 512 requested output tokens,
+65,536 HTTP envelope bytes, JSON format, think=false and the configured timeout.
+The original normal-chat provider behavior and single-threaded ModelManager/native
+mutex are preserved for future Phase 6D adaptive workload management.
+
+### Offline checks and owner live test plan
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_semantic_locations.py' -v
+.venv/bin/python -B -m unittest discover -s tests -p 'test_intent_translator.py' -v
+.venv/bin/python -B -m unittest discover -s tests
+make -C native/sync
+.venv/bin/python -B -m unittest discover -s tests -p 'test_sync.py' -v
+PYTHONPATH=. .venv/bin/python -B tests/phase6c_demo.py
+.venv/bin/python -B -m friday.main
+```
+
+The semantic refinement passed 538 tests and navigation passed 582. With trusted
+file references the offline suite has **649 passing tests**: 370 committed Phase 6B
+tests, 81 hybrid tests, 87 semantic tests, 44 navigation tests and 67 file-reference
+regressions. The extended demo uses temporary
+fixtures, a fake model, real CLI authorization/ToolManager and the actual native
+mutex. It verifies backend behavior, not new live Qwen accuracy. The owner reported
+successful pre-refinement live Downloads/Desktop/Pictures checks; refined semantic
+accuracy and latency still need owner verification with qwen3:4b.
+
+| Live input | Expected behavior |
+|---|---|
+| open photos | Fast list of XDG Pictures; permission prompt if needed |
+| pictures | Same fast browsing request; no pending state required |
+| open videos | Fast list of XDG Videos, not playback |
+| open downloads | Fast list of XDG Downloads |
+| open Desktop | Fast list of XDG Desktop; case insensitive |
+| show my documents | Fast list of XDG Documents |
+| what is inside my music folder? | One Qwen proposal, trusted Music resolution, permissions |
+| how do I open Pictures in Ubuntu? | Ordinary instructional chat, no tool |
+| play a video | Unsupported playback; no tool/model call |
+| go back | Revisit the previous successful listing with fresh authorization, or report no previous location |
+| /Videos | Exact absolute path; safe failure outside configured/eligible roots; never ~/Videos |
+| ~/Videos | Exact home path; permission-controlled listing; no XDG rewriting |
+
+Select Deny for personal folders unless you explicitly want to display their
+filenames. Use public fixtures for file reads. Test unknown/malformed proposals and
+a denied folder: no retries, private content, arbitrary execution or SQLite entries
+should appear. Missing/default-disabled folders report safe errors rather than
+choosing another location.
+
+Known limits: six semantic concepts/nine English spoken aliases, not a full
+multilingual voice interface; localized filesystem names come from XDG. No speech
+capture, GUI launcher, directory history, recursive search, new clarification state
+or filesystem indexing is implemented. Strict config syntax and lexical grounding
+may require explicit paths. File-policy secret detection remains heuristic, and
+model answers can be wrong or injection-influenced but cannot approve/execute.
+
+Phase 6D is **Adaptive Workload Management**: build on the shared ModelManager,
+existing native synchronization, zero-inference fast paths and explicit budgets;
+measure CPU inference, queue/timeout behavior and safe cancellation. Navigation/
+search require their own later bounded, permission-scoped design. Phase 6E desktop
+opening requires approved apps/MIME types, executable restrictions, exact path
+checks, direct confirmation and safe process arguments without a shell. Read grants
+never authorize launching applications or any Trash modification.
+
+### Session-only directory navigation
+
+After `open downloads`, a visible directory named `portfolio` can be opened with
+`open portfolio`, `enter portfolio`, or `go into portfolio`. Voice-style input such
+as `FRIDAY, please enter the portfolio folder.` works too. Simple navigation costs
+zero Qwen calls. Standard directory concepts (`Pictures`, `Downloads`, etc.) keep
+Semantic Location Resolver precedence. Explicit `/Videos` and `~/Videos` retain
+their original meanings and do not become relative to the current location.
+
+`go back` revisits the last successfully visited directory, rather than calculating
+a parent. `go home` lists FRIDAY's configured project root, then clears navigation
+history after success. It does not authorize the entire Ubuntu home directory.
+The manager retains at most 16 prior locations and 100 visible child entries. It
+records a location only after a successful, authorized listing. Failed or denied
+requests leave both location and history unchanged. A new successful listing
+replaces the child snapshot; no filesystem search is performed.
+
+Trusted tool results provide directory names and device/inode identities. These
+identities are checked again before approval and on descriptor-relative execution.
+They are stale-target checks, never permission grants. Parent **Allow once** does
+not authorize a child, and returning with `go back` asks again when necessary.
+Persistent read/list grants retain their existing scope and can be revoked.
+Sensitive entries and symlinks cannot be navigated through the cache. Unknown,
+unlisted or ambiguous entries require clarification or an explicit path;
+case-colliding names can be selected with exact double-quoted spelling. Controls
+and invalid Unicode names are excluded from navigation. Explicit `read path`
+commands remain available; `open` of a listed regular file reads supported text
+through the same permission system. `enter` of a regular file explains the type mismatch.
+
+Navigation context stays in Python memory, is never sent to Qwen or SQLite, and
+clears at session shutdown. A validated model basename can select a cached child,
+but only trusted backend code constructs its guarded path. Listing and navigation
+responses remain outside conversation memory. There is no forward history,
+recursive search, navigation persistence, speech capture, or application launching.
+Truncated listings only make their returned entries available for navigation.
+Stale snapshots require relisting; device/inode checks do not promise immunity to
+inode reuse or every concurrent filesystem mutation.
+
+Owner test sequence (use only folders you want to authorize):
+
+1. Start FRIDAY as documented above with qwen3:4b available.
+2. `open downloads` → existing authorization and a bounded listing.
+3. `open portfolio` → works only if `portfolio` was returned as a directory;
+   Allow once for Downloads asks for a separate child decision.
+4. `go back` → authorized revisit of Downloads; Allow once may prompt again.
+5. `go home` → project listing, no blanket home grant.
+6. Deny child approval → no listing and no location change.
+7. `open pictures` → semantic/XDG Pictures mapping takes precedence.
+
+Offline checks, with no personal file access or live Ollama dependency:
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_navigation.py'
+.venv/bin/python -B -m unittest discover -s tests
+PYTHONPATH=. .venv/bin/python -B tests/phase6c_demo.py
+```
+
+### Context-aware file reading and explanations
+
+After listing a folder containing `data.js`, `index.html`, and `images`:
+
+| Request | Behavior |
+|---|---|
+| `open images`, `enter images`, `show images folder` | List the verified child directory |
+| `open data.js`, `read data.js`, `show data.js` | Read the verified file through ToolManager |
+| `what's in data.js?`, `what have in data.js` | Display the actual authorized text; no Qwen call |
+| `show me index.html`, `read the index file` | Read the exact name, or unambiguous listed file stem |
+| `explain data.js`, `explain what's inside data.js` | Authorized read, then one bounded session-only model explanation |
+| `summarize index.html` | Authorized read, then one bounded session-only summary |
+| `open portfolio.zip` | Explain that archive browsing is unsupported; no archive read |
+| `open .zip file` | One visible ZIP: same refusal; multiple matches: ask which one |
+
+File existence and type come only from the last successful authorized listing.
+Exact names, casefold matching and explicit `the … file` stem references are bounded
+by that snapshot. Ambiguous/unknown references ask for a listed name or explicit
+path, without searching, guessing, or asking Qwen to invent contents. Directories
+use list_directory; files use read_file. Reading never changes the current directory
+or back history. A later successful listing replaces the snapshot.
+
+A listing's Allow once does **not** grant file reads. Each read checks current
+ToolManager policy, folder permissions, sensitive exclusions, no-follow traversal,
+regular single-link type, file-size limit and strict UTF-8/non-NUL content rules.
+The cached parent and file device/inode identities are checked before prompting
+and again against descriptors during execution. A replaced file, replaced parent,
+or symlink cannot silently become a different read target. A valid extension is
+not proof of text; binary content under `data.js` is refused. Unsupported content
+has a safe explanatory error. Controls in supported text are escaped for display.
+The UTF-8/non-NUL check is a bounded text policy, not a complete MIME detector.
+
+ZIP filenames in contextual requests are deliberately refused even if their bytes
+might decode as text; no extraction, archive inspection, execution or application
+launching is added. Extension selection requires exactly one matching listed file.
+Symlinks and special entries remain unsupported. Explicit paths retain the existing
+filesystem semantics and security checks.
+
+An explicit explanation/summary makes one model call only after a successful read.
+It reuses the existing one-item, 16,384-byte temporary snapshot and labels the content
+as untrusted data, unable to authorize instructions or tool calls. Snapshot truncation
+is indicated to the model. Denied/failed/binary reads make zero explanation calls.
+Model failures are not retried; the verified read text is returned with an explanation
+failure notice. Model prompt/job records are scrubbed, and neither body nor explanation
+is saved to SQLite or normal conversation history. Navigation context is never sent
+to the model. Ordinary chat memory continues working. Model summaries can still be
+inaccurate and may cover only the bounded snapshot; no new live Qwen accuracy is claimed.
+
+Voice-style folder examples now handled without Qwen:
+
+```text
+FRIDAY, take me to my pictures
+FRIDAY, can you take me to the place where I keep my pictures?
+take me to where I keep my pictures
+can you show me my photos?
+open my picture folder
+show me my videos
+take me to downloads
+```
+
+These are bounded browsing grammars for known XDG concepts, not a general action
+parser. `how do I open Pictures in Ubuntu?`, `show me how to read data.js`, and
+`tell me about photography` remain chat. `launch a photo editor` stays unsupported.
+
+Owner live testing, using a folder you explicitly choose to authorize:
+
+```text
+open downloads
+open portfolio
+open images
+go back
+open data.js
+what's in data.js?
+what have in data.js
+read the index file
+explain data.js
+summarize index.html
+open portfolio.zip
+open .zip file
+go back
+go home
+FRIDAY, can you take me to the place where I keep my pictures?
+```
+
+Folder/file examples require those entries in the returned listing. Expect fresh
+read approval after Allow once on the parent; Deny produces no body/explanation.
+Direct reads/listings cost zero Qwen calls. Explanations use the existing local
+qwen3:4b through ModelManager/native synchronization. No files are executed.
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_file_references.py'
+.venv/bin/python -B -m unittest discover -s tests
+PYTHONPATH=. .venv/bin/python -B tests/phase6c_demo.py
+```

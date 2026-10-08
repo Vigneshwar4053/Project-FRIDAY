@@ -36,6 +36,7 @@ class FileSystemPolicy:
         self.grant_store = grant_store
         self._operation = ContextVar('filesystem_operation', default=None)
         self._approval = ContextVar('filesystem_approval', default=None)
+        self._directory_guard = ContextVar('filesystem_directory_guard', default=None)
         self._max_file_size = max_file_size
         self.max_directory_entries = max_directory_entries
         self._write_roots = (roots[0],) if write_roots is None else tuple(
@@ -103,14 +104,45 @@ class FileSystemPolicy:
         raise OutsideRoots('Path is outside allowed roots.')
 
     @contextmanager
-    def request_access(self, operation, approval=None):
+    def request_access(self, operation, approval=None, *, directory_guard=None):
         operation_token = self._operation.set(operation)
         approval_token = self._approval.set(approval)
+        guard_token = self._directory_guard.set(directory_guard)
         try:
             yield
         finally:
+            self._directory_guard.reset(guard_token)
             self._approval.reset(approval_token)
             self._operation.reset(operation_token)
+
+    @staticmethod
+    def _check_identity(metadata, expected):
+        if (metadata.st_dev, metadata.st_ino) != (expected.device, expected.inode):
+            raise ValueError('Listed directory was replaced; relist explicitly.')
+
+    def check_directory_guard(self, requested):
+        """Metadata-only preflight before approval; execution repeats FD checks."""
+        guard = self._directory_guard.get()
+        if guard is None:
+            return
+        path = lexical_path(requested)
+        if self._operation.get() != guard.operation or path != Path(guard.target.path):
+            raise ValueError('Guarded listing target changed.')
+        if guard.parent is not None:
+            with directory_descriptor(guard.parent.path) as fd:
+                self._check_identity(os.fstat(fd), guard.parent)
+        if guard.operation == 'list_directory':
+            with directory_descriptor(guard.target.path) as fd:
+                self._check_identity(os.fstat(fd), guard.target)
+        else:
+            # Metadata only before approval: never read file bytes here.
+            with directory_descriptor(Path(guard.target.path).parent) as parent:
+                fd = os.open(Path(guard.target.path).name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC,
+                             dir_fd=parent)
+                try:
+                    self._check_identity(regular_file(fd), guard.target)
+                finally:
+                    os.close(fd)
 
     def require_writable(self, requested):
         root, relative = self.resolve(requested)
@@ -123,12 +155,23 @@ class FileSystemPolicy:
         root, relative = self.resolve(requested)
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
         fd = os.open('/', flags)
+        guard = self._directory_guard.get()
+        walked = Path('/')
+        parent_checked = guard is None or guard.parent is None
+        def check_parent():
+            nonlocal parent_checked
+            if guard is not None and guard.parent is not None and walked == Path(guard.parent.path):
+                self._check_identity(os.fstat(fd), guard.parent)
+                parent_checked = True
         try:
+            check_parent()
             # Walk even the configured root without following replaced symlinks.
             for part in root.parts[1:]:
                 next_fd = os.open(part, flags, dir_fd=fd)
                 os.close(fd)
                 fd = next_fd
+                walked /= part
+                check_parent()
             expected = None
             if self._operation.get() in {'read_file', 'list_directory'}:
                 expected = next((g for g in self.persistent_grants() if g.folder == root), None)
@@ -143,6 +186,10 @@ class FileSystemPolicy:
                 next_fd = os.open(part, flags, dir_fd=fd)
                 os.close(fd)
                 fd = next_fd
+                walked /= part
+                check_parent()
+            if not parent_checked:
+                raise ValueError('Guarded parent was not verified.')
             yield fd, relative.name if relative.parts else '.', str(root / relative)
         finally:
             os.close(fd)
@@ -155,6 +202,11 @@ class FileSystemPolicy:
             fd = os.open(name, flags | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
                          mode, dir_fd=parent)
             try:
+                guard = self._directory_guard.get()
+                if guard is not None:
+                    if self._operation.get() != guard.operation or Path(display) != Path(guard.target.path):
+                        raise ValueError('Guarded target changed.')
+                    self._check_identity(os.fstat(fd), guard.target)
                 approval = self._approval.get()
                 if approval is not None:
                     metadata = os.fstat(fd)

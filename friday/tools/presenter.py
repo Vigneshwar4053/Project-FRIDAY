@@ -1,6 +1,6 @@
 """Deterministic bounded presentation; never send live tool results to a model."""
 import json
-from friday.tools.models import ToolStatus
+from friday.tools.models import ToolStatus, ToolErrorCategory
 
 MAX_PRESENTED_CHARACTERS = 12000
 MAX_LISTED_ENTRIES = 100
@@ -20,6 +20,14 @@ class ToolPresenter:
     def format(self, result):
         prefix = f'[Tool: {result.tool_name}]\n'
         if result.status is not ToolStatus.SUCCESS:
+            categories = {
+                ToolErrorCategory.PERMISSION_DENIED: 'Filesystem permission denied.',
+                ToolErrorCategory.UNAVAILABLE_PATH: 'Requested path is unavailable.',
+                ToolErrorCategory.NOT_DIRECTORY: 'Requested path is not a directory.',
+                ToolErrorCategory.BLOCKED_PATH: 'Filesystem request blocked or invalid.',
+                ToolErrorCategory.UNSUPPORTED_CONTENT: 'Binary or unsupported file content; only regular UTF-8 text can be displayed.'}
+            if result.error_category in categories:
+                return prefix + f'{result.status.name}: {categories[result.error_category]} No model fallback was used.'
             return prefix + f'{result.status.name}: Request could not be completed; no model fallback was used.'
         data = result.data
         name = result.tool_name
