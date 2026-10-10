@@ -24,7 +24,7 @@ from friday.providers.ollama import OllamaProvider
 from friday.sync import create_synchronization
 from friday.tools.access import FolderDecision
 
-SCENARIOS = (('A_greeting', 'hello friday'), ('B_folder', 'open downloads'),
+SCENARIOS = (('A_greeting', 'hello friday'), ('B_folder', 'list downloads'),
              ('C_known_file', 'read benchmark.txt'),
              ('D_standard', 'explain Python decorators'),
              ('E_deep', 'think deeply about software architecture'))
@@ -84,7 +84,7 @@ def run_benchmark(*, samples=3, live=False):
                             tool_router=router, tool_manager=manager, workload_configuration=config)
                         try:
                             if scenario == 'C_known_file':
-                                assistant.respond('open downloads')  # Setup excluded from timing and counts.
+                                assistant.respond('list downloads')  # Setup excluded from timing and counts.
                             before = models.invocation_count
                             model_time = models.model_request_ns
                             cpu, started = process_time_ns(), perf_counter_ns()

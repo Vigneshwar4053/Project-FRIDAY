@@ -141,7 +141,7 @@ def main():
                 assert execute.call_args.args[0].arguments['path'] == '~/Videos'
                 assert provider.calls == 6
                 print('O: explicit ~/Videos -> approved listing; original path spelling retained')
-                assert 'public-fixture.txt' in approval('open downloads', '1')
+                assert 'public-fixture.txt' in approval('list downloads', '1')
                 assert 'data.js' in approval('open portfolio', '1')
                 provider.response = 'The verified demo code declares a constant.'
                 assert 'declares a constant' in approval('explain data.js', '1')
