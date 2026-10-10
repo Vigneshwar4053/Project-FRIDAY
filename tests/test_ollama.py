@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 import json
 import unittest
 import urllib.error
@@ -129,7 +130,7 @@ class OllamaTests(unittest.TestCase):
              patch('friday.main.settings', replace(settings, database_path=Path(directory) / 'test.db')), \
              patch('builtins.input', side_effect=['hello', 'exit']), \
              patch('sys.stdout', new_callable=io.StringIO) as output:
-            main()
+            main(speech_backend=Mock())
         self.assertIn('FRIDAY: Hello, Vigneshwar!', output.getvalue())
         self.assertNotIn('synthetic private trace', output.getvalue())
         self.assertNotIn('</think>', output.getvalue())

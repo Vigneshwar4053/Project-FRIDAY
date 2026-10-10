@@ -29,3 +29,8 @@ logs/*
 # Generated native libraries and objects
 *.so
 *.o
+
+# Offline speech dependencies belong in XDG_DATA_HOME/friday/voice, not Git.
+ggml-*.bin
+whisper-cli
+/voice-artifacts/

@@ -1,0 +1,6 @@
+# OPTIONAL: install only after separate owner approval. Core FRIDAY remains stdlib.
+# Proposed pins; installation/wheel compatibility has not been tested offline.
+argon2-cffi==25.1.0
+argon2-cffi-bindings==25.1.0
+cffi==2.0.0
+pycparser==2.23

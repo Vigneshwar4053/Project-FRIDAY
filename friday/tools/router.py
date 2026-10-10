@@ -5,16 +5,18 @@ import math
 from pathlib import Path
 import re
 from types import MappingProxyType
+from friday.desktop.workflows import WorkflowPlan
 
 from friday.tools.computation import MAX_VALUES
 from friday.tools.models import JSONValue
 from friday.tools.locations import (SemanticLocationResolver, LocationResolutionError,
                                     command_text, browsing_guard, instructional_question)
+from friday.desktop.routing import DESKTOP_TOOLS
 
 MAX_ROUTED_MESSAGE_LENGTH = 4096
 MAX_NUMBER_TOKEN_LENGTH = 32
 ROUTABLE_TOOLS = frozenset({'memory_info', 'system_info', 'cpu_info', 'list_directory',
-                            'read_file', 'disk_usage', 'process_status', 'calculate'})
+                            'read_file', 'disk_usage', 'process_status', 'calculate'}) | DESKTOP_TOOLS
 _NUMBER = re.compile(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z')
 
 
@@ -25,8 +27,12 @@ class RouteDecision:
     arguments: Mapping[str, JSONValue] = field(default_factory=lambda: MappingProxyType({}))
     message: str | None = None
     permission_command: str | None = None
+    workflow: WorkflowPlan | None = None
+    reference_message: bool = False
 
     def __post_init__(self):
+        if self.workflow is not None and type(self.workflow) is not WorkflowPlan:
+            raise ValueError('Typed workflow plan required.')
         if self.tool_name is not None and self.tool_name not in ROUTABLE_TOOLS:
             raise ValueError('Tool is not routable.')
         if self.permission_command not in {None, 'show', 'revoke', 'authorize'}:
@@ -36,13 +42,29 @@ class RouteDecision:
 
 
 class ToolRouter:
-    def __init__(self, project_root):
+    def __init__(self, project_root, *, desktop_resolver=None):
         self.project_root = str(Path(project_root).resolve(strict=True))
         self.locations = SemanticLocationResolver()
+        self.desktop_resolver = desktop_resolver
 
     def route(self, message):
+        if re.match(r'^\s*(?:(?:my|the)\s+)?(?:owner\s+(?:security\s+)?(?:code|passphrase|password)|security\s+(?:code|passphrase))\b',message,re.IGNORECASE):
+            return RouteDecision(True, message='Owner credentials are accepted only through hidden terminal entry, never chat or voice.',reference_message=True)
         if len(message) > MAX_ROUTED_MESSAGE_LENGTH:
             return RouteDecision(True, message='Request is too long; maximum is 4096 characters.')
+        if self.desktop_resolver is not None:
+            desktop = self.desktop_resolver.resolve(message)
+            if desktop is not None:
+                name, arguments = desktop
+                if name == 'workflow':
+                    return RouteDecision(True,message=arguments['plan'].response(),workflow=arguments['plan'])
+                if name == 'reference_message':
+                    return RouteDecision(True,message=arguments['message'],reference_message=True)
+                if name == 'invalid':
+                    return RouteDecision(True, message='Invalid recent-work selection. Use Show Q to display current choices.')
+                if name == 'unsupported':
+                    return RouteDecision(True, message='Desktop request is not supported; use one approved application, folder or registered project without extra actions or flags.')
+                return RouteDecision(True, name, arguments)
         raw_text = command_text(message)
         text = raw_text.rstrip('?').strip()
         normalized = ' '.join(text.lower().split())
@@ -94,11 +116,13 @@ class ToolRouter:
         match = re.fullmatch(r'(?:is ([A-Za-z0-9][A-Za-z0-9_.-]{0,14}) running|check ([A-Za-z0-9][A-Za-z0-9_.-]{0,14}) process)', text, re.IGNORECASE)
         if match:
             return RouteDecision(True, 'process_status', {'name': match.group(1) or match.group(2)})
-        match = re.fullmatch(r'(read|show|open)\s+(.+)', text, re.IGNORECASE | re.DOTALL)
+        match = re.fullmatch(r'(read|show)\s+(.+)', text, re.IGNORECASE | re.DOTALL)
         if match:
             path = match.group(2)
             if '.' in path or '/' in path or (match.group(1).lower() == 'read' and not any(c.isspace() for c in path)):
                 return RouteDecision(True, 'read_file', {'path': path})
+        if re.fullmatch(r'open\s+\S*[./]\S*', text, re.IGNORECASE):
+            return RouteDecision(True, message='Direct file opening is unsupported here. Find the file first; opening its containing folder requires a separate request.')
         percent = re.fullmatch(r'what is (\S+) percent of (\S+)', text, re.IGNORECASE)
         calculation = re.fullmatch(r'(?:calculate\s+)?(?:the\s+)?(add|subtract|multiply|divide|power|sum|mean|median|min|max|count|sort|percentage)(?:\s+of)?\s+(.+)', text, re.IGNORECASE)
         if percent or calculation:

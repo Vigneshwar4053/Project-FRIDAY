@@ -88,7 +88,7 @@ class OllamaProvider(ModelProvider):
             payload["options"] = self._profile.options
             payload["think"] = self._profile.think
         if self._intent_mode:
-            options = ({**self._profile.options, 'num_predict': min(512, self._profile.num_predict), 'temperature': 0}
+            options = ({**self._profile.options, 'temperature': 0}
                        if self._profile is not None else {'num_predict': 512})
             payload.update(format='json', think=False, options=options)
         request = urllib.request.Request(

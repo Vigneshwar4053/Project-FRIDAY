@@ -313,7 +313,7 @@ class ApprovalTests(PermissionsFixture):
              patch('builtins.input', side_effect=['list ' + str(self.folder), '1',
                                                 'list ' + str(self.folder), '3', 'quit']):
             provider.return_value.chat.side_effect = ProviderError('Must not call')
-            main()
+            main(speech_backend=Mock())
         self.assertEqual(output.getvalue().count('Permission required:'), 2)
         self.assertIn('notes.txt', output.getvalue())
         self.assertIn('FAILED', output.getvalue())

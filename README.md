@@ -1,8 +1,10 @@
-# FRIDAY v0.4 Phase 6C — Voice-Ready Hybrid Tool Routing
+# FRIDAY — local offline personal AI assistant
 
 FRIDAY is Vigneshwar's personal local-first terminal AI assistant. It uses
 Ollama and qwen3:4b for practical help with programming, Linux, AI, authorized
 cybersecurity, research, planning, and automation advice.
+
+Current source/runtime findings and confirmed limitations are in the [full feature audit](docs/FRIDAY_FULL_FEATURE_AUDIT.md). Git tags stop at v0.4.0; voice and desktop changes remain unreleased. Historical phase sections retain their original test counts.
 
 ## Capabilities and limits
 
@@ -850,7 +852,7 @@ User → deterministic router → simple folder concept → trusted location res
 | desktop | XDG_DESKTOP_DIR | ~/Desktop |
 
 `open photos`, `show my pictures`, `pictures`, `open videos`, `show downloads`,
-`open documents`, `open music`, and `open Desktop` use a small verb/alias grammar,
+`list documents`, `open music`, and `open Desktop` use a small verb/alias grammar,
 not a collection of memorized sentences. `FRIDAY, open my photos.` is accepted
 as transcribed text. These requests cost **zero Qwen calls**. “Open” means list
 contents in this CLI; it never claims to launch an application.
@@ -994,7 +996,7 @@ accuracy and latency still need owner verification with qwen3:4b.
 | open photos | Fast list of XDG Pictures; permission prompt if needed |
 | pictures | Same fast browsing request; no pending state required |
 | open videos | Fast list of XDG Videos, not playback |
-| open downloads | Fast list of XDG Downloads |
+| list downloads | Fast list of XDG Downloads |
 | open Desktop | Fast list of XDG Desktop; case insensitive |
 | show my documents | Fast list of XDG Documents |
 | what is inside my music folder? | One Qwen proposal, trusted Music resolution, permissions |
@@ -1027,7 +1029,7 @@ never authorize launching applications or any Trash modification.
 
 ### Session-only directory navigation
 
-After `open downloads`, a visible directory named `portfolio` can be opened with
+After `list downloads`, a visible directory named `portfolio` can be opened with
 `open portfolio`, `enter portfolio`, or `go into portfolio`. Voice-style input such
 as `FRIDAY, please enter the portfolio folder.` works too. Simple navigation costs
 zero Qwen calls. Standard directory concepts (`Pictures`, `Downloads`, etc.) keep
@@ -1066,7 +1068,7 @@ inode reuse or every concurrent filesystem mutation.
 Owner test sequence (use only folders you want to authorize):
 
 1. Start FRIDAY as documented above with qwen3:4b available.
-2. `open downloads` → existing authorization and a bounded listing.
+2. `list downloads` → existing authorization and a bounded listing.
 3. `open portfolio` → works only if `portfolio` was returned as a directory;
    Allow once for Downloads asks for a separate child decision.
 4. `go back` → authorized revisit of Downloads; Allow once may prompt again.
@@ -1149,7 +1151,7 @@ parser. `how do I open Pictures in Ubuntu?`, `show me how to read data.js`, and
 Owner live testing, using a folder you explicitly choose to authorize:
 
 ```text
-open downloads
+list downloads
 open portfolio
 open images
 go back
@@ -1200,7 +1202,7 @@ inference budgets. No permissions or filesystem security rules change in either 
 | L2 standard | Ordinary chat, explicit verified-file explanation, unmatched hybrid intent | Existing ModelManager/provider with standard profile |
 | L3 deep | Explicit “think deeply …”, “perform a detailed technical analysis …”, or “compare … thoroughly” | One conversational call with deep profile; no autonomous tools |
 
-“hello, open downloads” and “thanks, show my files” are not L0. Classification is
+“hello, list downloads” and “thanks, show my files” are not L0. Classification is
 local, bounded and deterministic; no model call is made to choose a workload.
 Workload choice never authorizes a tool. Successfully matched actions and safe
 refusals retain priority over inference. Hybrid proposals still require strict
@@ -1325,7 +1327,7 @@ Start with `--adaptive --diagnostics`, then:
 |---|---|
 | hello friday | L0, local greeting, zero model calls |
 | thank you | L0, local gratitude, zero model calls |
-| open downloads | L1, existing authorization and listing |
+| list downloads | L1, existing authorization and listing |
 | open portfolio | L1 if a listed directory; fresh approval after Allow once |
 | open data.js | L1 if a listed regular file; separate read approval; no model |
 | explain this code | L2, one model call with the verified bounded snapshot, or a safe input-budget failure |
@@ -1445,3 +1447,329 @@ verified snapshots can exceed the conservative input cap and fail safely.
 Adaptive usage remains explicit: `.venv/bin/python -B -m friday.main --adaptive`,
 with optional `--diagnostics` for redacted workload metrics. Plain compatibility
 mode does not apply adaptive inference profiles. No permissions are changed.
+
+### Phase 6E: automatic conversational speech and confirmed voice input
+
+Voice wraps the existing FridayAssistant and secure tool runtime. The microphone
+is OFF at startup. No speech plays merely because FRIDAY starts. Automatic speech
+for eligible conversational responses defaults ON when the offline TTS executable
+is available. Startup prints `Speech Output: ON` and `Microphone: OFF`; if TTS is
+missing, it prints an actionable warning and continues with speech OFF. Text mode
+works without Whisper, models, eSpeak NG or valid voice configuration.
+
+The old `/tmp/friday-voice-trial.81iQhN/` runtime dependencies disappeared.
+Following explicit owner approval, Whisper.cpp v1.9.5 and checksum-verified tiny.en
+were restored to `~/.local/share/friday/voice/`, with owner-local saved configuration.
+Synthetic native-format decoding passed; live hardware validation remains pending.
+See [durable setup and manual validation](docs/PHASE_6E_SETUP.md).
+Store Whisper in `$XDG_DATA_HOME/friday/voice/` (default
+`~/.local/share/friday/voice/`), with `bin/whisper-cli` and
+`models/ggml-tiny.en.bin`. No dependency is installed/downloaded automatically
+or added to Git. Base.en remains a separate optional comparison proposal.
+
+Save owner-controlled JSON in `$XDG_CONFIG_HOME/friday/voice.json` (default
+`~/.config/friday/voice.json`) **after valid dependencies are provisioned**:
+
+```json
+{
+  "version": 1,
+  "binary": "/absolute/XDG-data-directory/friday/voice/bin/whisper-cli",
+  "model": "/absolute/XDG-data-directory/friday/voice/models/ggml-tiny.en.bin",
+  "model_sha256": "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"
+}
+```
+
+Use the actual absolute paths, not the example placeholders. `~` is expanded;
+environment/shell expressions are not. Relative XDG directory values are ignored.
+Configuration must be an owner-owned regular file, not a symlink, and cannot be
+writable by other users; prefer mode 0600. Invalid/oversized/duplicate/unknown
+fields and unapproved model pins fail safely. Explicit `--voice-binary`,
+`--voice-model` and `--voice-model-sha256` values override saved fields. Complete
+CLI overrides can recover from an invalid saved file; partial overrides require
+the remaining saved fields. CLI arguments never rewrite the saved file.
+
+```bash
+# No microphone, playback, executable launch, or assistant/memory session:
+.venv/bin/python -B -m friday.main --check-voice-config
+# Optional explicit configuration location:
+.venv/bin/python -B -m friday.main --voice-config /absolute/path/voice.json --check-voice-config
+# Normal startup discovers saved configuration; audio remains OFF:
+.venv/bin/python -B -m friday.main --adaptive
+```
+
+Inspection reports the configuration path, chosen dependency directory and
+missing-file/checksum status. `verified_files` confirms files/model integrity,
+not executable/model compatibility or hardware success. The setup guide provides
+an offline synthetic-WAV compatibility check. Missing dependencies fail before
+activation with an actionable message; invalid configuration leaves text mode
+available. No paths enter shell commands.
+
+At the interactive prompt, type `/voice`, then press Enter separately to activate.
+Stay quiet until the flushed `CAPTURE READY — SPEAK NOW` cue. Native ALC256 capture
+uses `hw:CARD=Generic_1,DEV=0`, 48 kHz stereo S16LE. Owned RUNNING status and an
+advancing hardware pointer are required, including after 0.8 seconds of settling.
+The **eight-second speaking window starts after the cue**, rather than sharing
+eight seconds with readiness. Capture now finishes naturally at arecord's
+twelve-second frame limit, including bounded quiet pre-roll and finalization
+tail. The cue must complete within three seconds of launch. After the speech
+window, finalization has a four-second wait bound; only natural exit 0 with a
+complete finalized twelve-second native WAV is accepted. SIGINT/SIGKILL are
+reserved for cancellation/failure cleanup; interrupted recordings are rejected.
+RIFF/chunk lengths, PCM format/alignment and full frame count are checked before
+decoding. Cleanup uncertainty ends the session and never falsely reports OFF.
+Original pre-roll is preserved. There is no gain change, normalization, trimming, VAD,
+denoising or microphone fallback. Tiny.en decoding keeps English, four CPU
+threads, beam/best-of 5, temperature zero and no fallback; STT has a 60-second
+timeout. Conversion belongs to the trusted CLI.
+
+Inspect the escaped transcript. Type `y` only if it is accurate. Enter or `n`
+discards it; type `/voice` again to retry. Ctrl+C cancels and returns to text.
+Only a confirmed transcript reaches `FridayAssistant.respond(..., persist=False)`.
+Permissions still require separate typed approval; speech cannot approve them.
+Transcripts are never dispatched as CLI commands or shell expressions.
+
+Explicit offline output is available through:
+
+```text
+You: /speak Hello, I am FRIDAY.
+```
+
+Only supplied text is spoken through `/usr/bin/espeak-ng` (English, 175 wpm).
+Text travels through stdin, not shell/argv, files or SSML. The backend limits
+input to 8192 UTF-8 bytes, rejects controls, uses a 60-second timeout and bounded
+process-group cancellation, and handles missing executables/audio errors without
+printing input or backend diagnostics. Ctrl+C cancels speech and returns to text;
+SIGTERM unwinds cleanup before CLI exit. No microphone or assistant/tool/model
+call occurs for `/speak`, and its text does not enter SQLite or chat history.
+Automatic speech uses the same offline backend as /speak, with a session-owned
+SpeechController. For eligible keyboard and confirmed /voice replies, FRIDAY
+prints the complete answer, flushes terminal output, then speaks it once. Text
+remains visible if speech fails. Playback is synchronous and interruptible,
+with no queue, background worker, overlapping audio or extra Ollama request.
+
+```text
+You: hello
+FRIDAY: Hello, Vigneshwar!
+# Greeting is printed and spoken.
+You: /q
+Automatic speech disabled.
+You: hello
+# Greeting remains visible but silent.
+You: /q
+Automatic speech enabled.
+You: hello
+# Greeting is spoken again.
+You: /speak Hello, I am FRIDAY.
+# Manual speech plays once, regardless of the /q state.
+```
+
+/q toggles automatic output only. It never activates the microphone, invokes
+Ollama/tools, changes permissions or writes settings/messages. Toggle confirmations
+are printed without speech. State resets for each new CLI session. Exit, quit,
+/bye and Ctrl+C retain their established behavior. No startup/unlock service exists.
+`/q hello` prints `Usage: /q` without toggling or invoking the model. Malformed
+`/voice` and `/bye`, empty `/speak`, and unknown slash commands receive CLI feedback
+instead of becoming model requests. `/speak TEXT` continues to accept supplied text.
+Type `hello` at the `You: ` prompt, rather than typing the prompt prefix yourself.
+
+Speech eligibility comes from immutable ResponseMetadata assigned by the existing
+assistant's trusted code paths. Deterministic L0 greetings can speak. A model
+answer can speak only for a positively recognized public conversation request
+and actual context carrying current-session public provenance. Whole-request
+public-topic grammar includes questions such as `what is Python?`, `what is a
+Python decorator?`, `explain machine learning`, and reviewed general computing,
+science and mathematics topics. Public small talk and limited follow-ups are also
+supported. This is deliberately conservative: arbitrary requests, pasted text,
+personal/security findings, unclassified restored history and unknown sources
+remain text-only. The catalog is in `friday/core/response.py`; it is not an LLM
+classification and not a keyword blacklist. A question about passwords can qualify
+as public education while harmless-looking private text cannot.
+
+Tool results, directory listings, private file snapshots and their generated
+explanations, permission messages, diagnostics, errors and unknown/untrusted
+retrieved context have no automatic speech authorization. Common credential/key
+structures are checked as a secondary safeguard after provenance checks. An LLM's
+JSON label, model claim or printed string cannot grant speech permission. Public
+history fingerprints are bounded, session-only and invalidated by content changes;
+no speech permission is restored from SQLite. Answer generation, routing, tool
+permissions and text-memory behavior remain unchanged. Thus a public model question
+may remain silent if its actual prompt contains unclassified prior-session history.
+/q does not override privacy classification. `/speak` is an explicit owner request,
+so choose public text when other people may hear it.
+
+The 8192-byte input bound and 60-second playback timeout can refuse or interrupt
+long answers; terminal text is always retained. Expanding public speech coverage
+requires reviewed provenance/request handling rather than silently trusting more
+content. Piper remains a future SpeechBackend adapter with separate installation
+and model approval; no Piper dependency has been installed.
+
+Voice transcripts and responses remain session-only and do not enter SQLite or
+reusable chat history. Private model-job messages/results are cleared per turn;
+there is no global mutable persistence switch. Audio is in a private temporary
+directory and deleted before typed transcript confirmation, including ordinary
+errors, Ctrl+C and orderly SIGTERM. Existing bounded file context/navigation and
+typed permission protections remain intact; explicitly approved persistent folder
+grants retain their established behavior. No transcript/private text is logged or
+included in diagnostics. Terminal scrollback can retain displayed text; SIGKILL
+or a system crash can interrupt cleanup, and OS audio infrastructure can buffer
+audio independently. Unlinking is not forensic erasure.
+
+No live recording/playback test was performed by Codex for this increment. The earlier
+owner-reported 8.33% WER across three recordings of one phrase is historical,
+not a guarantee or evidence that this timing fix improves recognition accuracy.
+The standalone capture scripts remain unavailable. Owner validation and an
+independent model comparison remain necessary.
+
+Offline regression tests (fake backends, no microphone or playback):
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -p 'test_voice*.py'
+.venv/bin/python -B -m unittest discover -s tests
+make -C native/sync
+.venv/bin/python -B -m unittest discover -s tests -p test_sync.py
+```
+
+### Preserved FRIDAY roadmap
+
+| Version | Milestone | Status |
+| --- | --- | --- |
+| v0.4.0 | Phase 6D — Adaptive Workload | Complete |
+| v0.5.0 | Phase 6E — Voice Interaction Foundation | IN PROGRESS; approved dependency restoration and owner validation pending |
+| v0.6.0 | Phase 6F — Wake Word & Natural Conversation | Planned |
+| v0.7.0 | Phase 7 — Ubuntu Desktop Control | Planned |
+| v0.8.0 | Phase 8 — Vision & Screen Understanding | Planned |
+| v0.9.0 | Phase 9 — Advanced Memory + Local RAG | Planned |
+| v1.0.0 | Phase 10 — Stable FRIDAY Assistant | Planned |
+| v1.1.0 | Phase 11 — Telugu Language & Voice Integration | Planned |
+
+Later desktop integration may offer an owner-controlled greeting after unlock,
+with microphone OFF until explicitly enabled and no autonomous command execution.
+Phase 7 will add secure installed-app discovery (VS Code, Firefox, Files), trusted
+recent-project and approved workspace/study shortcuts, and typed confirmation
+for sensitive actions. Future internet tooling needs explicit network approval,
+Wikipedia/trusted-source attribution, safe handling of retrieved content and no
+private-data exfiltration. Phase 9 conversation imports need explicit approval
+and local privacy/retrieval controls. Telugu STT/TTS and Telugu-English conversation
+remain in Phase 11. None of these future features is enabled by the voice increment.
+
+### Unreleased Phase 7A desktop enhancement
+
+An interactive terminal launch prints a local-time greeting and speaks it once
+through the existing offline eSpeak NG controller when speech is enabled. It then
+shows **YOUR RECENT WORK**: the last three distinct accepted FRIDAY-managed
+launch requests, stored in the existing SQLite database. Disabled or missing TTS
+keeps startup in text mode; help, diagnostics and noninteractive startup do not
+play a greeting. No microphone is activated.
+
+Type `Open VS Code.`, `Open Firefox.`, `Open Downloads.`, `Open Documents.`,
+`Open my FRIDAY project.` or `Open github.com in Firefox.`. Bare approved folder
+opening now means a desktop launch; use `list downloads` or `list documents` to
+browse through filesystem tools. Type `Show Q.`, `Show my recent work.`,
+`What was I working on?`, `Resume my last work.`, `Resume yesterday's project.`
+or `Resume previous projects.`. A number selects a stable saved ID only while
+that menu is active, and every resume needs fresh typed exact-operation approval.
+An intervening command closes the numeric menu. `/q` remains the speech toggle.
+
+Reviewed native installations must be administrator-owned ELF executables at
+fixed paths, with no writable parents or symlink components. A separate,
+owner-authorized Snap adapter permits **only Firefox and VS Code app-only launches**.
+It verifies fixed package/publisher IDs, active registration, immutable revision
+mounts, trusted snapd/dispatch helpers and fixed runtime-provider registrations
+before and after approval. The owner accepts these packages sourcing owner-writable
+startup shell files; Code's classic confinement and package-supplied no-sandbox
+flag are additional trust risks. FRIDAY adds no arbitrary flags or shell commands.
+Flatpak, other Snap apps, arbitrary PATH executables and user scripts remain unsupported.
+Snap project/file/URL arguments remain blocked: app-only approval is not an exact
+path-handoff exception. No installation or ownership setting is changed.
+
+Q remembers accepted launch requests, **not everything done inside external
+applications**. Authorized process starts enter Q with an internal window-unverified status, including processes still running after the bounded launch wait. The compact menu shows location and application; `show Q diagnostics` exposes status and summary.
+Failed/denied launches and voice-derived turns do not enter Q. No editor contents, history, keystrokes,
+clipboard or windows are monitored. Only the reviewed `https://github.com/` link
+is currently supported; private URLs, credentials, queries and fragments are
+refused. Saved metadata grants no permission, and all targets are revalidated.
+
+See [Phase 7A setup and security boundaries](docs/PHASE_7A_DESKTOP.md) and the
+[enhancement report and acceptance commands](docs/PHASE_7A_ENHANCEMENT.md).
+The [Q persistence fix report](docs/PHASE_7A_Q_PERSISTENCE.md) documents the
+process-start outcome policy, SQLite migration and regression acceptance steps.
+Six owner-approved real launch attempts ran through the actual CLI gateway. Visible GUI/folder outcomes still require owner confirmation; no release version changed. See the full audit for evidence and limitations.
+
+
+`open files`, `open downloads`, `open documents`, and
+`open my friday project folder` use **Ubuntu Files / Nautilus**, following the
+owner's latest command requirement. This restores the native defaults from before
+the managed-browser experiment. Exact Nautilus window ownership cannot be proved
+through the reviewed API, so FRIDAY cannot safely close a previous window or
+guarantee one native window. Every approved native request now attempts the
+requested location, including repeats and Q resumes. No cooldown or previous
+window receipt blocks it. Each attempt requires one exact-target approval and
+consumes an actual-launch slot; the existing four-launch session limit remains.
+`retry` is compatible but no longer required.
+No unrelated window or Nautilus process is closed.
+
+The real audit exposed a limitation in descriptor-pinned Nautilus targets: the
+file manager retains a `/proc/<friday-pid>/fd/<pin>` URI. It cannot remain usable
+after that FRIDAY process exits. Passing a normal canonical pathname instead
+needs a separate owner security decision because Nautilus does not expose an
+atomic directory-descriptor handoff. FRIDAY does not claim durable folder opening
+or compositor visibility from process acceptance.
+
+Named discovery uses existing filesystem boundaries: `find portfolio`,
+`where is portfolio`, `show portfolio location`, `open portfolio in downloads`,
+`open portfolio in vs code`, and `open portfolio from downloads in vs code`.
+Unqualified searches use configured and persistently authorized roots only.
+Explicit Downloads/Documents scopes require metadata-only `search_directory`
+approval unless existing access covers them. Search is bounded to depth 3,
+1,000 examined entries, 20 results and a cooperative two-second traversal budget;
+permission waiting is excluded. Hidden entries, sensitive paths and symlinks are
+skipped. No file contents are read, no grants are saved by search, and no hidden
+monitoring is introduced. Multiple matches need a numbered exact-path choice.
+An unspecified destination needs a VS Code/Ubuntu Files choice before launch;
+regular files offer only VS Code. Searches and choices cost no application slot.
+Native reviewed VS Code accepts validated descriptor-pinned targets with one
+`open_project_in_application` approval. Snap Code project/file targets remain
+unsupported by the app-only exception and fail clearly.
+
+Existing explicit text-reading commands and references after a terminal directory
+listing retain their prior behavior. Use a destination-qualified command for
+desktop opening in that context. Ordinary known folder opening remains native.
+
+Use `open friday browser`, `open downloads in friday browser`,
+`open documents in friday browser`, and
+`open my friday project folder in friday browser` for the separate managed GTK
+window. `open my friday project` still uses VS Code.
+First browser use requires separate typed `launch_browser` and `navigate_browser`
+approvals. Further navigation, including `go back`, `go forward` and numbered Q
+resume, requires fresh exact navigation approval but reuses the managed window.
+History is bounded to 16 locations and changes only after renderer confirmation.
+A hidden/unmapped window still answers health checks. An inconclusive IPC check
+keeps the live renderer and prevents another launch; it never reuses old approval.
+Use `show browser status` for bounded diagnostic codes without folder contents,
+paths, IPC credentials or raw error text. Closing the window is detected on the next operation; reopening needs both
+approvals and counts toward the unchanged four-process desktop limit. Navigation
+inside an existing window consumes no launch slot.
+
+Navigation displays the current approved location with contents hidden. Use
+`list browser contents` for a bounded listing through the existing filesystem
+permission gateway. Navigation grants no read access, and Home's existing read
+restriction remains. The minimal GUI has no file opening/modification or arbitrary
+folder entry controls; use terminal navigation commands. GTK uses installed system
+Python/PyGObject, a private configuration/cache directory and local GIO backend.
+There is no public IPC endpoint, shell, network request or filesystem watcher.
+
+Q persists the last three distinct verified managed actions in SQLite. Managed
+navigation records application-confirmed location with compositor visibility
+unverified; legacy Nautilus entries keep their original backend and are labeled
+Ubuntu Files / Nautilus. New location activities use `nautilus_location` or
+`friday_browser_location`. Showing Q validates and semantically deduplicates legacy records without rewriting them. Accepted repeats normalize canonical application + target keys with stable IDs; superseded alias metadata is retained in a SQLite legacy archive. New explicit Browser workflows remain distinct. While its menu
+is active, `resume Q 2 in friday browser` offers the saved approved location in
+FRIDAY Browser with fresh approval; it records a distinct Browser activity after
+confirmation, subject to the normal three-slot limit. Plain numbered resume uses
+the displayed original application. Denials/failures
+do not refresh Q. No completed external work is inferred. No packages or release
+versions changed. App-only Firefox/VS Code Snap requests now attempt reviewed launches; visible GUI acceptance is pending. See the
+[managed-browser report and exact acceptance steps](docs/PHASE_7A_MANAGED_BROWSER.md)
+and [security design](docs/FRIDAY_BROWSER_DESIGN.md).
+
+See the [browser lifecycle and window ownership repair report](docs/PHASE_7A_BROWSER_REUSE.md) for current behavior, limitations and manual GUI acceptance.

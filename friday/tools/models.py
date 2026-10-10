@@ -148,6 +148,8 @@ class ToolStatus(StrEnum):
 
 
 class ToolErrorCategory(StrEnum):
+    HANDOFF_FAILED = 'handoff_failed'
+    OWNER_AUTHENTICATION = 'owner_authentication'
     PERMISSION_DENIED = 'permission_denied'
     UNAVAILABLE_PATH = 'unavailable_path'
     NOT_DIRECTORY = 'not_directory'

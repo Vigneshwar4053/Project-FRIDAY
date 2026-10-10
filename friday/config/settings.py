@@ -11,6 +11,7 @@ class Settings:
     filesystem_read_roots: tuple[Path | str, ...] = ()
     filesystem_max_directory_entries: int = 100
     filesystem_permission_store_path: Path | None = None
+    desktop_duplicate_window_seconds: float = 20
     assistant_name: str = "FRIDAY"
     user_name: str = "Vigneshwar"
     ollama_base_url: str = "http://127.0.0.1:11434"
@@ -27,6 +28,8 @@ class Settings:
     sync_library_path: Path = Path(__file__).resolve().parents[2] / "native" / "sync" / "libfriday_sync.so"
 
     def __post_init__(self):
+        from friday.desktop.guard import RecentLaunchGuard
+        RecentLaunchGuard(self.desktop_duplicate_window_seconds)  # Validate trusted configuration.
         if type(self.adaptive_workloads) is not bool or type(self.workload_diagnostics) is not bool:
             raise ValueError('Workload switches must be booleans.')
         if not all(isinstance(profile, InferenceProfile) for profile in
