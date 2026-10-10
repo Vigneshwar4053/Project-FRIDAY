@@ -50,7 +50,7 @@ class NavigationTests(unittest.TestCase):
         self.nav = self.assistant.navigation
 
     def start(self):
-        self.assertIn("portfolio", self.assistant.respond("open downloads"))
+        self.assertIn("portfolio", self.assistant.respond("list downloads"))
 
     def test_open_child(self):
         self.start()
@@ -96,7 +96,10 @@ class NavigationTests(unittest.TestCase):
 
     def test_unknown_child(self):
         self.start()
-        self.assertIn("Please name", self.assistant.respond("open unknown"))
+        response=self.assistant.respond("open unknown")
+        self.assertIn("No matching target",response)
+        self.assertIn(str(self.project),response)
+        self.assertNotIn('Found:',response)
         self.assertEqual(self.approval.request.call_count, 1)
         self.provider.chat.assert_not_called()
         self.assertEqual(self.nav.current.path, str(self.downloads))
@@ -269,7 +272,10 @@ class NavigationTests(unittest.TestCase):
         self.start()
         self.provider.chat.return_value = "invented (directory)"
         self.assistant.respond("Hello FRIDAY")
-        self.assertIn("Please name", self.assistant.respond("open invented"))
+        response=self.assistant.respond("open invented")
+        self.assertIn("No matching target",response)
+        self.assertNotIn('Found:',response)
+        self.assertNotIn('invented',self.nav.children)
         self.provider.chat.assert_called_once()
 
     def test_failed_home_does_not_reset(self):
@@ -294,14 +300,27 @@ class NavigationTests(unittest.TestCase):
     def test_children_bound(self):
         for index in range(150):
             (self.downloads / f"dir{index}").mkdir()
-        self.assertIn("Additional entries omitted", self.assistant.respond("open downloads"))
+        self.assertIn("Additional entries omitted", self.assistant.respond("list downloads"))
         self.assertLessEqual(len(self.nav.children), 100)
 
     def test_unlisted_new_child_not_inferred(self):
         self.start()
         (self.downloads / "new-child").mkdir()
-        self.assertIn("Please name", self.assistant.respond("open new-child"))
+        response=self.assistant.respond("open new-child")
+        self.assertIn("No matching target",response)
+        self.assertNotIn(str(self.downloads/'new-child'),response)
         self.assertEqual(self.approval.request.call_count, 1)
+
+    def test_prior_listing_does_not_block_authorized_named_discovery(self):
+        self.start()
+        target=self.project/'new-project';target.mkdir()
+        response=self.assistant.respond('open new-project')
+        self.assertIn('Choose how to open',response)
+        self.assertIn(str(target),response)
+        self.assertIn('[1] VS Code',response)
+        self.assertEqual(self.approval.request.call_count,1)
+        self.assertEqual(self.nav.current.path,str(self.downloads))
+        self.provider.chat.assert_not_called()
 
     def test_listed_parent_not_authorization_after_revoke(self):
         self.approval.request.return_value = FolderDecision.ALLOW_PERSISTENT

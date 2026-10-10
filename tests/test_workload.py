@@ -15,7 +15,7 @@ from friday.core.context import select_context
 from friday.core.workload import classify, WorkloadLevel
 from friday.main import create_tool_runtime, main
 from friday.memory import MemoryManager
-from friday.models.profile import InferenceProfile, deep_profile
+from friday.models.profile import InferenceProfile, deep_profile, standard_profile
 from friday.providers.base import ModelProvider, ProviderError
 from friday.providers.ollama import OllamaProvider
 from friday.tools.access import FolderDecision
@@ -45,7 +45,7 @@ class ClassificationTests(unittest.TestCase):
                 self.assertEqual(decision.level, WorkloadLevel.MINIMAL)
                 self.assertFalse(decision.inference_needed)
     def test_mixed_not_greeting(self):
-        for message in ('hello, open downloads', 'thanks, show my files', 'hi read data.js', 'good morning open portfolio'):
+        for message in ('hello, list downloads', 'thanks, show my files', 'hi read data.js', 'good morning open portfolio'):
             self.assertNotEqual(classify(message).level, WorkloadLevel.MINIMAL)
     def test_tool_priority(self):
         decision = classify('think deeply about this architecture', deterministic=True)
@@ -80,7 +80,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(deep_profile().num_predict, 2048)
         self.assertEqual(deep_profile().num_ctx, InferenceProfile().num_ctx)
     def test_unbounded_tokens_rejected(self):
-        for value in (-1, 0, True, 999999, 1.5):
+        for value in (-2, -1, 0, 31, 2049, True, 999999, 1.5):
             with self.subTest(value=value), self.assertRaises(ValueError): InferenceProfile(num_predict=value)
     def test_output_and_template_reserve(self):
         with self.assertRaises(ValueError): InferenceProfile(num_ctx=1024,num_predict=512)
@@ -122,15 +122,41 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(request.call_args.kwargs['timeout'], 34)
         self.assertEqual(payload['model'], 'qwen3:4b')
         self.assertIsNone(provider._profile)
-    def test_intent_contract_cannot_expand(self):
+    def test_selected_profile_output_budgets_forwarded(self):
+        provider = OllamaProvider(settings.ollama_base_url, settings.ollama_model)
+        for profile, budget in ((standard_profile(), 768), (deep_profile(), 2048)):
+            with self.subTest(budget=budget):
+                _, response = self.http()
+                with patch('friday.providers.ollama.urllib.request.urlopen', return_value=response) as request:
+                    with provider.inference_profile(profile):
+                        provider.chat([{'role':'user','content':'public'}])
+                payload = json.loads(request.call_args.args[0].data)
+                self.assertEqual(payload['options']['num_predict'], budget)
+                self.assertEqual(payload['options'], profile.options)
+
+    def test_intent_uses_selected_profile_budget_and_preserves_contract(self):
+        provider = OllamaProvider(settings.ollama_base_url, settings.ollama_model)
+        for profile, budget in ((standard_profile(), 768), (deep_profile(), 2048),
+                                (InferenceProfile(num_predict=64), 64)):
+            with self.subTest(budget=budget):
+                _, response = self.http()
+                with patch('friday.providers.ollama.urllib.request.urlopen', return_value=response) as request:
+                    with provider.intent_mode(), provider.inference_profile(profile):
+                        provider.chat([{'role':'user','content':'public'}])
+                payload = json.loads(request.call_args.args[0].data)
+                self.assertEqual(payload['options'], {**profile.options, 'temperature': 0})
+                self.assertEqual(payload['options']['num_predict'], budget)
+                self.assertFalse(payload['think'])
+                self.assertEqual(payload['format'], 'json')
+
+    def test_intent_default_budget_without_profile(self):
         provider = OllamaProvider(settings.ollama_base_url, settings.ollama_model)
         _, response = self.http()
         with patch('friday.providers.ollama.urllib.request.urlopen', return_value=response) as request:
-            with provider.intent_mode(), provider.inference_profile(deep_profile()):
+            with provider.intent_mode():
                 provider.chat([{'role':'user','content':'public'}])
         payload = json.loads(request.call_args.args[0].data)
-        self.assertEqual(payload['options']['num_predict'],512)
-        self.assertEqual(payload['options']['temperature'],0)
+        self.assertEqual(payload['options'], {'num_predict':512})
         self.assertFalse(payload['think'])
         self.assertEqual(payload['format'],'json')
     def test_provider_profile_restores_on_failure(self):
@@ -214,7 +240,7 @@ class AdaptiveTests(unittest.TestCase):
         self.addCleanup(self.assistant.model_manager.close)
         self.addCleanup(self.assistant.end_session)
     def browse(self):
-        self.assistant.respond('open downloads')
+        self.assistant.respond('list downloads')
         self.assistant.respond('open portfolio')
     def test_l0_no_model_tool_permission_or_memory(self):
         with patch.object(self.manager,'execute') as tool, patch.object(self.memory,'save_turn') as save:
@@ -230,12 +256,12 @@ class AdaptiveTests(unittest.TestCase):
         self.assertIn('welcome',self.assistant.respond('thank you'))
         self.assertEqual(self.provider.calls,0)
     def test_mixed_greeting_not_swallowed(self):
-        self.assistant.respond('hello, open downloads')
+        self.assistant.respond('hello, list downloads')
         self.assertNotEqual(self.assistant.last_performance.level,'L0')
         self.assertEqual(self.provider.calls,1)
     def test_l1_uses_toolmanager_and_approval(self):
         with patch.object(self.manager,'execute',wraps=self.manager.execute) as tool:
-            self.assistant.respond('open downloads')
+            self.assistant.respond('list downloads')
             tool.assert_called_once()
         self.approval.request.assert_called_once()
         self.assertEqual(self.provider.calls,0)
@@ -268,7 +294,7 @@ class AdaptiveTests(unittest.TestCase):
         self.assertEqual(self.provider.calls,1)
     def test_denial_no_fallback(self):
         self.approval.request.return_value=FolderDecision.DENY
-        self.assertIn('permission denied',self.assistant.respond('open downloads'))
+        self.assertIn('permission denied',self.assistant.respond('list downloads'))
         self.assertEqual(self.provider.calls,0)
         self.assertIsNone(self.assistant.navigation.current)
     def test_parent_once_does_not_authorize_read(self):
@@ -283,7 +309,7 @@ class AdaptiveTests(unittest.TestCase):
         self.assertEqual(self.provider.calls,0)
     def test_symlink_still_blocked(self):
         (self.downloads/'link').symlink_to(self.downloads/'portfolio',target_is_directory=True)
-        self.assistant.respond('open downloads')
+        self.assistant.respond('list downloads')
         self.assertIn('symlinks',self.assistant.respond('open link'))
         self.assertEqual(self.provider.calls,0)
     def test_zip_stays_unsupported(self):
@@ -417,7 +443,7 @@ class AdaptiveTests(unittest.TestCase):
     def test_classifier_failure_not_fallback(self):
         with patch('friday.core.assistant.classify',side_effect=ValueError('private path')):
             with self.assertRaisesRegex(ProviderError,'selection failed safely'):
-                self.assistant.respond('open downloads')
+                self.assistant.respond('list downloads')
         self.assertEqual(self.provider.calls,0)
         self.approval.request.assert_not_called()
         self.assertIsNone(self.assistant._measurement)
@@ -494,7 +520,7 @@ class AdaptiveCLITests(unittest.TestCase):
                 @contextmanager
                 def mode(profile): yield
                 provider.return_value.inference_profile=mode
-                main(adaptive=adaptive,diagnostics=diagnostics)
+                main(adaptive=adaptive,diagnostics=diagnostics,speech_backend=Mock())
                 return output.getvalue(),provider.return_value.chat.call_count
     def test_adaptive_cli_greeting_zero_calls(self):
         output,calls=self.run_cli(['hello friday','quit'])

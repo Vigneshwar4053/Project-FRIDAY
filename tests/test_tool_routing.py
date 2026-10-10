@@ -38,7 +38,7 @@ class RoutingTests(unittest.TestCase):
             ('system load', 'cpu_info'), ('what files are in this project?', 'list_directory'),
             ('list project files', 'list_directory'), ('show files in the project', 'list_directory'),
             ('read README.md', 'read_file'), ('show friday/models/manager.py', 'read_file'),
-            ('open tests/test_tools.py', 'read_file'), ('check disk space', 'disk_usage'),
+            ('open tests/test_tools.py', None), ('check disk space', 'disk_usage'),
             ('how much disk space is available?', 'disk_usage'), ('disk usage for this project', 'disk_usage'),
             ('is ollama running?', 'process_status'), ('check ollama process', 'process_status'),
             ('is code running?', 'process_status'), ('mean of 10,20,30', 'calculate')]:
@@ -194,7 +194,11 @@ class RoutingTests(unittest.TestCase):
     def test_composition_registry_isolation(self):
         other, router = create_tool_runtime(self.configuration)
         self.assertIsNot(other.registry, self.manager.registry)
-        self.assertEqual(len(other.registry), 10)
+        self.assertEqual(len(other.registry), 29)  # Existing 25 plus four distinct, capability-gated handoff tools.
+        for name in ('computer_action', 'computer_list_windows'):
+            self.assertIsNotNone(other.registry.get(name))
+            self.assertIsNot(other.registry.get(name).tool, self.manager.registry.get(name).tool)
+        self.assertIsNot(other.computer_access, self.manager.computer_access)
 
     def test_model_output_cannot_dispatch_tools(self):
         self.provider.chat.return_value = 'run tool write_file README.md hacked'
@@ -223,7 +227,7 @@ class RoutingTests(unittest.TestCase):
                   'run tool write_file README.md hacked', 'mean of 10,20,30', 'quit']), \
              patch('sys.stdout', new_callable=io.StringIO) as output:
             provider.return_value.chat.side_effect = ProviderError('Offline')
-            main()
+            main(speech_backend=Mock())
         self.assertIn('[Tool: memory_info]', output.getvalue())
         self.assertIn('FAILED', output.getvalue())
         self.assertIn('mean: 20.0', output.getvalue())

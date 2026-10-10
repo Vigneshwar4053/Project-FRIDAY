@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 import io
 from dataclasses import replace
 from pathlib import Path
@@ -23,7 +24,7 @@ class CLITests(unittest.TestCase):
                 provider.return_value.chat.side_effect = response
             else:
                 provider.return_value.chat.return_value = response
-            main()
+            main(speech_backend=Mock())
             with MemoryManager(Path(directory) / 'test.db') as memory:
                 self.assertIsNotNone(memory.get_most_recent_session().ended_at)
             return output.getvalue(), provider.return_value.chat.call_count
@@ -35,6 +36,17 @@ class CLITests(unittest.TestCase):
             self.assertIn('Model: qwen3:4b', output)
             self.assertIn('Goodbye.', output)
             self.assertEqual(calls, 0)
+
+    def test_stop_commands_do_not_call_model(self):
+        for command in ('stop', '/stop', 'STOP'):
+            output, calls = self.run_cli([command, 'quit'])
+            self.assertIn('Computer-use STOP set', output)
+            self.assertEqual(calls, 0)
+
+    def test_malformed_stop_never_becomes_model_input(self):
+        output, calls = self.run_cli(['stop now', '/stop now', 'quit'])
+        self.assertIn('Usage: stop', output)
+        self.assertEqual(calls, 0)
 
     def test_ctrl_c_and_eof(self):
         for error in (KeyboardInterrupt(), EOFError()):

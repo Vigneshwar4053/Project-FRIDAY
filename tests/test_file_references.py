@@ -20,7 +20,7 @@ class FileReferenceTests(unittest.TestCase):
         (self.child / 'portfolio.zip').write_bytes(b'PK\x00archive fixture')
 
     def browse(self):
-        self.assertIn('portfolio', self.assistant.respond('open downloads'))
+        self.assertIn('portfolio', self.assistant.respond('list downloads'))
         self.assertIn('data.js', self.assistant.respond('open portfolio'))
         self.assertEqual(self.nav.current.path, str(self.child))
 

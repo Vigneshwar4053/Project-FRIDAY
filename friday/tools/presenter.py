@@ -19,6 +19,17 @@ def _bytes(value):
 class ToolPresenter:
     def format(self, result):
         prefix = f'[Tool: {result.tool_name}]\n'
+        if result.error_category is ToolErrorCategory.HANDOFF_FAILED:
+            return prefix+safe_text(result.error)[:MAX_PRESENTED_CHARACTERS]
+        if result.error_category is ToolErrorCategory.OWNER_AUTHENTICATION:
+            return prefix+'Owner authentication failed or is unavailable. A private owner credential configuration and Argon2id dependency are required. No sensitive action was attempted.'
+        from friday.desktop.routing import DESKTOP_TOOLS
+        if result.tool_name in DESKTOP_TOOLS:
+            if result.status is not ToolStatus.SUCCESS:
+                return prefix + ('Desktop permission denied; no launch attempted.' if result.status is ToolStatus.DENIED or
+                                 result.error_category is ToolErrorCategory.PERMISSION_DENIED else
+                                 'Desktop request failed safely; no launch outcome was confirmed.')
+            return prefix + safe_text(result.data['message'])
         if result.status is not ToolStatus.SUCCESS:
             categories = {
                 ToolErrorCategory.PERMISSION_DENIED: 'Filesystem permission denied.',

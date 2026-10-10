@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 """Offline response-boundary regressions: never save incomplete deliberation."""
 import io
 import json
@@ -115,7 +116,7 @@ class FinalAnswerTests(unittest.TestCase):
             config = replace(settings, database_path=database, adaptive_workloads=True)
             self.reply('Okay, the user is asking. PRIVATE_TRACE', done=True, done_reason='length')
             with patch('friday.main.settings', config), patch('builtins.input', side_effect=['do you know who am i','exit']), patch('sys.stdout', new_callable=io.StringIO) as output:
-                main()
+                main(speech_backend=Mock())
             self.assertNotIn('PRIVATE_TRACE', output.getvalue())
             self.assertIn('output-token limit', output.getvalue())
             import sqlite3
