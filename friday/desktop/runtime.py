@@ -379,7 +379,11 @@ class DesktopPermissionAdapter:
             except ValueError: return self.browser_execution.prepare(handoff)
             if self.browser_execution.available(target):
                 return self.browser_execution.prepare(handoff)
-            if handoff.operation is HandoffOperation.NAVIGATE and self.firefox_url_handoff.available(target):
+            from friday.desktop.firefox_url_handoff import FirefoxSnapUrlAdapter
+            if (self.firefox_url_handoff.available(target) or
+                    isinstance(self.firefox_url_handoff.adapter,FirefoxSnapUrlAdapter)):
+                # A failed real-adapter preflight must retain its fixed stage;
+                # an unavailable page verifier is a separate capability result.
                 return self.firefox_url_handoff.prepare(handoff,stack)
             return self.browser_execution.prepare(handoff)
         if self.handoff_verifier.supports(handoff.operation) is not True:

@@ -4,6 +4,7 @@ This adapter is separate from ReviewedSnap.arguments and the verified-window
 browser controller. No AT-SPI, browser content, alternate browser or retry.
 """
 from dataclasses import dataclass
+from contextlib import ExitStack
 import hashlib
 import os
 from pathlib import Path
@@ -14,7 +15,7 @@ from types import MappingProxyType
 
 from friday.desktop.accessibility import Deadline, DesktopFailure
 from friday.desktop.browser_execution import BrowserTarget
-from friday.desktop.handoffs import HandoffOperation
+from friday.desktop.handoffs import HandoffOperation, HandoffRequest
 from friday.desktop.snap import ReviewedSnap
 from friday.security.owner import OwnerAuthenticationError, OwnerRequest, SensitiveOperation
 from friday.tools.access import FolderDecision
@@ -25,6 +26,36 @@ YOUTUBE_URL = WEBSITES['youtube']
 ACCEPTED_MESSAGE = 'Firefox navigation request accepted; page load not independently verified.'
 LAUNCHER = Path('/usr/bin/snap')
 ARGUMENT_PREFIX = ('run', 'firefox', '--new-window')
+EXECUTION_BLOCKER = ('Firefox navigation/search execution is disabled pending review of the failed live handoff. '
+                     'No workflow steps were executed.')
+FAILURE_STAGES = MappingProxyType({
+    'capability_rejection': 'reviewed handoff capability unavailable',
+    'launcher_verification': 'Snap installation or executable verification',
+    'launcher_fingerprint': 'launcher fingerprint validation',
+    'environment_validation': 'desktop environment validation',
+    'context_revalidation': 'typed handoff context revalidation',
+    'process_spawn': 'process startup',
+    'nonzero_exit': 'nonzero process exit',
+    'timeout': 'execution deadline exceeded; submission uncertain',
+    'cancelled': 'execution cancelled; submission uncertain if already started',
+    'process_cleanup': 'owned invocation cleanup could not be confirmed',
+})
+
+
+class UrlHandoffFailure(RuntimeError):
+    """Fixed stage only; never carries package/process output or query text."""
+    def __init__(self, stage):
+        if stage not in FAILURE_STAGES:
+            raise ValueError('Unknown handoff stage.')
+        self.stage = stage
+        super().__init__(stage)
+
+
+def checked_validation(function, stage):
+    try:
+        return function()
+    except (OSError, ValueError, KeyError):
+        raise UrlHandoffFailure(stage) from None
 # Installed package code reviewed for this checkpoint. Updates fail closed until
 # separately reviewed; never parse package Exec text into commands.
 CHAIN_HASHES = MappingProxyType({
@@ -39,8 +70,13 @@ CHAIN_HASHES = MappingProxyType({
 
 
 def supported(target):
-    return (type(target) is BrowserTarget and target.operation is HandoffOperation.NAVIGATE
-            and approved_url(target.url) and target.value == target.url)
+    if type(target) is not BrowserTarget:
+        return False
+    try:
+        # Reconstruct to revalidate operation, exact query and canonical URL.
+        return BrowserTarget.from_request(HandoffRequest(target.operation, value=target.value)) == target
+    except (ValueError, TypeError):
+        return False
 
 
 @dataclass(frozen=True)
@@ -53,6 +89,8 @@ class UrlHandoffContext:
 
 
 class UnavailableFirefoxUrlAdapter:
+    reason = EXECUTION_BLOCKER
+
     def available(self, target):
         return False
 
@@ -60,6 +98,13 @@ class UnavailableFirefoxUrlAdapter:
 class FirefoxSnapUrlAdapter:
     def __init__(self):
         self.snap = ReviewedSnap()
+
+    def _binary(self, stack):
+        binary = checked_validation(lambda: stack.enter_context(self.snap.executable('firefox')),
+                                    'launcher_verification')
+        if binary[1] != LAUNCHER:
+            raise UrlHandoffFailure('launcher_verification')
+        return binary
 
     @staticmethod
     def _environment():
@@ -100,31 +145,39 @@ class FirefoxSnapUrlAdapter:
         if not supported(target):
             return False
         try:
-            with self.snap.executable('firefox') as binary:
-                return binary[1] == LAUNCHER and bool(self._chain()) and bool(self._environment())
-        except (OSError, ValueError, KeyError):
+            with ExitStack() as stack:
+                self.prepare(target, stack)
+            return True
+        except (OSError, ValueError, KeyError, UrlHandoffFailure):
             return False
 
     def prepare(self, target, stack):
         if not supported(target):
             raise ValueError('Only exact owner-registered URL handoffs are reviewed.')
-        binary = stack.enter_context(self.snap.executable('firefox'))
-        if binary[1] != LAUNCHER:
-            raise ValueError('Fixed Snap dispatcher required.')
-        return UrlHandoffContext(binary[2], binary[3], binary[4], self._chain(), self._environment())
+        binary = self._binary(stack)
+        chain = checked_validation(self._chain, 'launcher_fingerprint')
+        environment = checked_validation(self._environment, 'environment_validation')
+        if not chain:
+            raise UrlHandoffFailure('launcher_fingerprint')
+        if not environment:
+            raise UrlHandoffFailure('environment_validation')
+        return UrlHandoffContext(binary[2], binary[3], binary[4], chain, environment)
 
     def revalidate(self, context, deadline):
         deadline.check()
         if type(context) is not UrlHandoffContext:
-            raise ValueError('Typed launcher context required.')
-        with self.snap.executable('firefox') as current:
+            raise UrlHandoffFailure('context_revalidation')
+        with ExitStack() as stack:
+            current = self._binary(stack)
             if (current[1] != LAUNCHER or current[3] != context.binary_identity or
                     current[4] != context.snap_identity):
-                raise ValueError('Reviewed installation changed.')
-        info = os.fstat(context.binary_fd)
+                raise UrlHandoffFailure('launcher_fingerprint')
+        info = checked_validation(lambda: os.fstat(context.binary_fd), 'launcher_fingerprint')
         if ((info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns) != context.binary_identity or
-                self._chain() != context.chain_identity or self._environment() != context.environment):
-            raise ValueError('Adapter or session changed.')
+                checked_validation(self._chain, 'launcher_fingerprint') != context.chain_identity):
+            raise UrlHandoffFailure('launcher_fingerprint')
+        if checked_validation(self._environment, 'environment_validation') != context.environment:
+            raise UrlHandoffFailure('environment_validation')
         deadline.check()
         return True
 
@@ -133,11 +186,14 @@ class FirefoxSnapUrlAdapter:
             raise ValueError('Exact owner-registered target required.')
         self.revalidate(context, deadline)
         deadline.check()  # Cancellation prevents an unstarted handoff.
-        child = subprocess.Popen([str(LAUNCHER), *ARGUMENT_PREFIX, target.url],
-            executable=f'/proc/self/fd/{context.binary_fd}', pass_fds=(context.binary_fd,),
-            shell=False, close_fds=True, stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            env=dict(context.environment), cwd='/', start_new_session=True)
+        try:
+            child = subprocess.Popen([str(LAUNCHER), *ARGUMENT_PREFIX, target.url],
+                executable=f'/proc/self/fd/{context.binary_fd}', pass_fds=(context.binary_fd,),
+                shell=False, close_fds=True, stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=dict(context.environment), cwd='/', start_new_session=True)
+        except OSError:
+            raise UrlHandoffFailure('process_spawn') from None
         try:
             # A running Firefox can accept remote arguments and exit. A newly
             # launched Firefox may keep this process alive: timeout is then an
@@ -151,21 +207,26 @@ class FirefoxSnapUrlAdapter:
                     continue
             deadline.check()
             if code != 0:
-                return {'status': 'url_handoff_failed'}
+                return {'status': 'url_handoff_failed', 'failure_stage': 'nonzero_exit'}
             self.revalidate(context, deadline)
             return {'status': 'request_accepted', 'message': ACCEPTED_MESSAGE,
                     'url': target.url, 'page_load_verified': False}
         finally:
-            if child.poll() is None:
-                # Stop only the invocation FRIDAY started, never an existing
-                # Firefox, its process group, or a PID found by name.
-                child.kill()
-            child.wait(timeout=1)
+            try:
+                if child.poll() is None:
+                    # Stop only our invocation, never a discovered process/group.
+                    child.kill()
+                child.wait(timeout=1)
+            except (OSError, subprocess.TimeoutExpired):
+                raise UrlHandoffFailure('process_cleanup') from None
 
 
 class FirefoxUrlHandoff:
     def __init__(self, cancelled, clock, adapter=None):
-        self.adapter = adapter if adapter is not None else FirefoxSnapUrlAdapter()
+        # Reported approved live handoffs failed with no retained stage evidence.
+        # Re-enable the production adapter only after a separately reviewed repair.
+        # Constructor injection remains available for mocked contract tests.
+        self.adapter = adapter if adapter is not None else UnavailableFirefoxUrlAdapter()
         self.cancelled = cancelled
         self.clock = clock
         self._busy = Lock()
@@ -174,14 +235,22 @@ class FirefoxUrlHandoff:
         return not self.cancelled.is_set() and supported(target) and self.adapter.available(target) is True
 
     def prepare(self, request, stack):
-        if request.operation is not HandoffOperation.NAVIGATE or not approved_url(request.value):
+        if request.operation not in {HandoffOperation.NAVIGATE, HandoffOperation.SEARCH}:
             return {'result': {'status': 'unsupported_destination'}}
-        target = BrowserTarget.from_request(request)
+        if request.operation is HandoffOperation.NAVIGATE and not approved_url(request.value):
+            return {'result': {'status': 'unsupported_destination'}}
+        try:
+            target = BrowserTarget.from_request(request)
+        except ValueError:
+            return {'result': {'status': 'unsupported_destination'}}
         if self.cancelled.is_set():
             return {'result': {'status': 'cancelled'}}
-        if not self.available(target):
-            return {'result': {'status': 'url_handoff_unavailable'}}
-        context = self.adapter.prepare(target, stack)
+        if not isinstance(self.adapter, FirefoxSnapUrlAdapter) and not self.available(target):
+            return {'result': {'status': 'url_handoff_unavailable', 'failure_stage': 'capability_rejection'}}
+        try:
+            context = self.adapter.prepare(target, stack)
+        except UrlHandoffFailure as failure:
+            return {'result': {'status': 'url_handoff_unavailable', 'failure_stage': failure.stage}}
         return {'url_handoff_target': target, 'url_handoff_context': context,
                 'url_handoff_adapter': self.adapter, 'used': False}
 
@@ -221,6 +290,9 @@ class FirefoxUrlHandoff:
                 raise ValueError('Adapter or target changed.')
             outcome = adapter.handoff(context, target, deadline)
             deadline.check()
+            if (type(outcome) is dict and outcome.get('status') == 'url_handoff_failed' and
+                    outcome.get('failure_stage') in FAILURE_STAGES):
+                return {'status': 'url_handoff_failed', 'failure_stage': outcome['failure_stage']}
             if (type(outcome) is not dict or outcome.get('status') != 'request_accepted' or
                     outcome.get('url') != target.url or outcome.get('page_load_verified') is not False):
                 return {'status': 'url_handoff_failed'}
@@ -228,8 +300,12 @@ class FirefoxUrlHandoff:
             return {'status': 'request_accepted', 'message': ACCEPTED_MESSAGE,
                     'url': target.url, 'page_load_verified': False}
         except DesktopFailure as failure:
-            return {'status': 'url_handoff_' + failure.status.value}
-        except (Exception, KeyboardInterrupt):
+            return {'status': 'url_handoff_' + failure.status.value, 'failure_stage': failure.status.value}
+        except UrlHandoffFailure as failure:
+            return {'status': 'url_handoff_failed', 'failure_stage': failure.stage}
+        except KeyboardInterrupt:
+            return {'status': 'url_handoff_cancelled', 'failure_stage': 'cancelled'}
+        except Exception:
             return {'status': 'url_handoff_failed'}
         finally:
             self._busy.release()

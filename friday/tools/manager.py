@@ -79,16 +79,24 @@ class ToolManager:
             with authorization:
                 data = entry.tool.execute(request.arguments)
             from friday.desktop.handoffs import HANDOFF_TOOLS, HANDOFF_FAILURE_MESSAGES
-            from friday.desktop.firefox_url_handoff import ACCEPTED_MESSAGE
+            from friday.desktop.firefox_url_handoff import ACCEPTED_MESSAGE, FAILURE_STAGES
+            from friday.desktop.browser_execution import BrowserTarget
+            from friday.desktop.handoffs import HandoffRequest
             from friday.desktop.websites import approved_url
-            accepted_url_handoff=(request.tool_name=='navigate_firefox_to_exact_url' and
+            accepted_url_handoff=False
+            if (request.tool_name in {'navigate_firefox_to_exact_url','search_firefox_for_query'} and
+                (request.tool_name!='navigate_firefox_to_exact_url' or approved_url(request.arguments.get('url'))) and
                 isinstance(data,Mapping) and data.get('status')=='request_accepted' and
-                approved_url(request.arguments.get('url')) and data.get('url')==request.arguments['url'] and
-                data.get('page_load_verified') is False and data.get('message')==ACCEPTED_MESSAGE)
+                data.get('page_load_verified') is False and data.get('message')==ACCEPTED_MESSAGE):
+                target=BrowserTarget.from_request(HandoffRequest.from_arguments(request.tool_name,request.arguments))
+                accepted_url_handoff=data.get('url')==target.url
             if request.tool_name in HANDOFF_TOOLS and (not isinstance(data,Mapping) or
                     (data.get('status')!='verified' and not accepted_url_handoff)):
                 message=HANDOFF_FAILURE_MESSAGES.get(data.get('status') if isinstance(data,Mapping) else None,
                                                      HANDOFF_FAILURE_MESSAGES['handoff_failed'])
+                if (request.tool_name in {'navigate_firefox_to_exact_url','search_firefox_for_query'} and
+                        isinstance(data,Mapping) and data.get('failure_stage') in FAILURE_STAGES):
+                    message += ' Failure stage: ' + FAILURE_STAGES[data['failure_stage']] + '.'
                 return result(ToolStatus.FAILED,error=message,error_category=ToolErrorCategory.HANDOFF_FAILED)
             return result(ToolStatus.SUCCESS, data=data)
         except UnsupportedFileContent:

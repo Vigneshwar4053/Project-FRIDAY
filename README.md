@@ -1693,6 +1693,21 @@ See [Phase 7A setup and security boundaries](docs/PHASE_7A_DESKTOP.md) and the
 [enhancement report and acceptance commands](docs/PHASE_7A_ENHANCEMENT.md).
 The [Q persistence fix report](docs/PHASE_7A_Q_PERSISTENCE.md) documents the
 process-start outcome policy, SQLite migration and regression acceptance steps.
+
+Checkpoint 3L extends the immutable website registry with Google and Stack
+Overflow, maps Gatewall/Gatewalla aliases to the existing PW Study destination,
+and implements deterministic Google search targets through the reviewed handoff.
+Production navigation/search remains disabled pending an established cause and
+reviewed repair for the failed live Firefox handoff. See the
+[Checkpoint 3L report](docs/FRIDAY_CHECKPOINT3L.md) for aliases, security contracts,
+test results and the conditional one-time owner live-test procedure. Phase 1
+ChromaDB/RAG remains paused.
+
+The [Checkpoint 3M report](docs/FRIDAY_CHECKPOINT3M.md) records the installed
+launcher lifetime findings and fixed failure-stage diagnostics. Production
+navigation/search remains disabled: a persistent Firefox invocation has no
+reviewed exact-request acknowledgement, and the earlier failure cause is still
+unproven. Timeout remains an uncertain outcome, never acceptance.
 Six owner-approved real launch attempts ran through the actual CLI gateway. Visible GUI/folder outcomes still require owner confirmation; no release version changed. See the full audit for evidence and limitations.
 
 

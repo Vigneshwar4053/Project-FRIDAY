@@ -21,6 +21,8 @@ EXPECTED = {
     'whatsapp':'https://web.whatsapp.com/',
     'github':'https://github.com/Vigneshwar4053',
     'pw_study':'https://www.pw.live/study-v2/study',
+    'google':'https://www.google.com/',
+    'stackoverflow':'https://stackoverflow.com/',
 }
 COMMANDS = {
     'open my linkedin':'linkedin',
@@ -37,11 +39,21 @@ COMMANDS = {
     'open firefox and go to github':'github',
     'open firefox and go to pw study':'pw_study',
     'open firefox and go to youtube':'youtube',
+    'open google':'google',
+    'open stackoverflow':'stackoverflow',
+    'open stack overflow':'stackoverflow',
+    'open firefox and go to google':'google',
+    'open firefox and go to stackoverflow':'stackoverflow',
+    'open gatewall':'pw_study',
+    'open gatewalla':'pw_study',
+    'open my gatewall':'pw_study',
+    'open my gatewalla':'pw_study',
+    'open firefox and go to gatewalla':'pw_study',
 }
 
 
 class WebsiteRegistryTests(unittest.TestCase):
-    def test_only_the_five_exact_owner_urls_are_registered(self):
+    def test_only_the_seven_exact_owner_urls_are_registered(self):
         self.assertEqual(dict(WEBSITES),EXPECTED)
         with self.assertRaises(TypeError):WEBSITES['other']='https://other.example/'
         with self.assertRaises(TypeError):SITE_ALIASES['other']='github'
@@ -100,7 +112,7 @@ class WebsiteExecutionTests(FirefoxUrlHandoffFixture):
                 self.assertEqual(auth.target,approval.target)
                 self.assertEqual(auth.application_id,'firefox')
                 self.assertIn(url,approval.target);self.assertIn(url,approval.effect)
-        self.assertEqual(self.auth.authenticate.call_count,5);self.assertEqual(self.approval.request.call_count,5)
+        self.assertEqual(self.auth.authenticate.call_count,len(EXPECTED));self.assertEqual(self.approval.request.call_count,len(EXPECTED))
 
     def test_every_supported_command_executes_without_a_model(self):
         assistant,provider=self.assistant()
@@ -146,7 +158,7 @@ class WebsiteExecutionTests(FirefoxUrlHandoffFixture):
     def test_denial_blocks_all_sites(self):
         self.approval.request.return_value=FolderDecision.DENY
         for url in EXPECTED.values():self.assertFalse(self.navigate(url).success)
-        self.assertEqual(self.auth.authenticate.call_count,5);self.process.assert_not_called()
+        self.assertEqual(self.auth.authenticate.call_count,len(EXPECTED));self.process.assert_not_called()
 
     def test_unsupported_websites_and_url_variants_never_authenticate_or_launch(self):
         for url in ('https://github.com/','https://github.com/Vigneshwar4053/',
