@@ -1,0 +1,133 @@
+{
+  "corpus_sha256": "ad18870e8af3c30ee4b8bb11f018dba9a92a2352e7c2d7a9363a8801d3c5cdb4",
+  "questions": [
+    {
+      "id": "tls_versions",
+      "question": "Which TLS versions should a web application enable, and which older versions should it disable?",
+      "expected_document_id": "cheatsheets-f9c79d45e84f972d",
+      "expected_source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+      "expected_source_url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/cb9fe01e5ddf17b42513d2c53c4b86196c665c45/cheatsheets/Transport_Layer_Security_Cheat_Sheet.md",
+      "expected_processed_sha256": "5d401a09c0a79a3a920152344e0bd9cfabb86460b3adfad66e3d248a826c7afc",
+      "answer_concepts": [
+        "TLS 1.3 by default",
+        "TLS 1.2 for compatibility",
+        "disable TLS 1.0, TLS 1.1, SSLv2 and SSLv3"
+      ],
+      "reviewed_text_markers": [
+        "TLS 1.3",
+        "TLS 1.2",
+        "TLS 1.0"
+      ]
+    },
+    {
+      "id": "container_capabilities",
+      "question": "How should Docker containers restrict Linux capabilities and privileged mode?",
+      "expected_document_id": "cheatsheets-9dbfa41b1c298280",
+      "expected_source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+      "expected_source_url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/cb9fe01e5ddf17b42513d2c53c4b86196c665c45/cheatsheets/Docker_Security_Cheat_Sheet.md",
+      "expected_processed_sha256": "112711de2f6af5778ea765c673dccb04b959063334cba5143378071dd8f63dad",
+      "answer_concepts": [
+        "drop all capabilities and add only required capabilities",
+        "avoid privileged mode"
+      ],
+      "reviewed_text_markers": [
+        "--cap-drop",
+        "--privileged"
+      ]
+    },
+    {
+      "id": "parameterized_sql",
+      "question": "How do prepared statements prevent user input from changing the intent of an SQL query?",
+      "expected_document_id": "cheatsheets-0c00c87970eceb40",
+      "expected_source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+      "expected_source_url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/cb9fe01e5ddf17b42513d2c53c4b86196c665c45/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.md",
+      "expected_processed_sha256": "87747866c6c58a1571f8ebc6697e80373d8cb80f818a524943c135ffd1f24ce8",
+      "answer_concepts": [
+        "parameterized queries distinguish code from data",
+        "user input cannot change query intent"
+      ],
+      "reviewed_text_markers": [
+        "distinguish between code and data",
+        "cannot change the intent"
+      ]
+    },
+    {
+      "id": "object_authorization",
+      "question": "When should the server check access permissions for a specific object or function?",
+      "expected_document_id": "cheatsheets-fb8b6e5c60ed7830",
+      "expected_source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+      "expected_source_url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/cb9fe01e5ddf17b42513d2c53c4b86196c665c45/cheatsheets/Authorization_Cheat_Sheet.md",
+      "expected_processed_sha256": "bf96f171b7b970e08ab3a63c4c7a251c85f311efb325b27292608fecddec1fac",
+      "answer_concepts": [
+        "every request for the specific object or function",
+        "server-side authorization"
+      ],
+      "reviewed_text_markers": [
+        "every* request",
+        "specific* object"
+      ]
+    },
+    {
+      "id": "file_permissions",
+      "question": "Why are world-readable application configuration files and executable files available to unauthorized users security risks?",
+      "expected_document_id": "wstg-0a67db8f808ffcfc",
+      "expected_source_id": "src_26921fde208fb75101da5ffcd55629e69fdce4697b0431d43cd0032193fc1aa3",
+      "expected_source_url": "https://raw.githubusercontent.com/OWASP/wstg/74a854b2635316b63b53f1e4e2e8d482a59d2f71/document/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management/09-File_Permissions.md",
+      "expected_processed_sha256": "7b23ca77d3173ca7e17e8e46958edd6f9429fe451c78483d5c135c245918c992",
+      "answer_concepts": [
+        "unauthorized users can execute files or read sensitive configuration",
+        "least privilege and restricted permissions"
+      ],
+      "reviewed_text_markers": [
+        "world-readable",
+        "unauthorized users"
+      ]
+    },
+    {
+      "id": "dependency_disclosure",
+      "question": "How do component vulnerability disclosures and CVE identifiers help teams manage vulnerable third-party dependencies?",
+      "expected_document_id": "cheatsheets-77e7a460c4072442",
+      "expected_source_id": "src_0d4e3593f93b84224de45c1c76578c7b446965f180213449db1cb467686f7d5a",
+      "expected_source_url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/cb9fe01e5ddf17b42513d2c53c4b86196c665c45/cheatsheets/Vulnerable_Dependency_Management_Cheat_Sheet.md",
+      "expected_processed_sha256": "bb957560a6c88308b34a9beb2ff82ad5c0591ac2d661c3b3362248f6e0fd336d",
+      "answer_concepts": [
+        "public CVE identifiers reference component vulnerabilities",
+        "teams track vulnerabilities and apply fixes or mitigation"
+      ],
+      "reviewed_text_markers": [
+        "third-party dependencies",
+        "CVE",
+        "mitigation"
+      ]
+    },
+    {
+      "id": "network_zones",
+      "question": "How does the segmentation guidance distinguish Internet-facing inbound DMZ services from outgoing DMZ services?",
+      "expected_document_id": "cheatsheets-843f0de69d31b794",
+      "expected_source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+      "expected_source_url": "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/cb9fe01e5ddf17b42513d2c53c4b86196c665c45/cheatsheets/Network_Segmentation_Cheat_Sheet.md",
+      "expected_processed_sha256": "d98ed2ea011889e8ed1b104aa73ccc512cdaf53a1e2301b087397c4ce89fa075",
+      "answer_concepts": [
+        "inbound DMZ hosts Internet-accessible services",
+        "outgoing DMZ services reach external networks without inbound external access"
+      ],
+      "reviewed_text_markers": [
+        "DMZ Inbound",
+        "DMZ Outgoing"
+      ]
+    }
+  ],
+  "query_embeddings_created": false,
+  "evaluation_performed": false,
+  "review_method": "Questions authored and checked against approved local source paragraphs during this execution; not an independent owner-labeled benchmark.",
+  "evaluation_protocol": {
+    "scope": "all 20 approved sources",
+    "expected_source_rank": "top-1 and top-3 separately",
+    "retrieval_accuracy": "fraction of queries whose expected document is in verified evidence at the stated rank",
+    "wrong_document_retrieval_rate": "fraction whose first returned evidence is from a document other than the expected source",
+    "citation_integrity_failure_rate": "fraction of returned citations failing authoritative source/revision/chunk/document-hash verification; separate from topic relevance",
+    "no_generation": true,
+    "no_tools": true,
+    "no_personal_memory": true
+  }
+}
