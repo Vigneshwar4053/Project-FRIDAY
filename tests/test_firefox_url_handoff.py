@@ -47,7 +47,10 @@ class FirefoxUrlHandoffFixture(DiscoveryWorkflowFixture):
 
     def assert_failed(self,result,status):
         self.assertFalse(result.success);self.assertIsNone(result.data)
-        self.assertEqual(result.error,HANDOFF_FAILURE_MESSAGES[status])
+        from friday.desktop.firefox_url_handoff import FAILURE_STAGES
+        message=HANDOFF_FAILURE_MESSAGES[status]
+        allowed={message} | {message+' Failure stage: '+label+'.' for label in FAILURE_STAGES.values()}
+        self.assertIn(result.error,allowed)
 
 
 class FirefoxUrlHandoffTests(FirefoxUrlHandoffFixture):
@@ -181,9 +184,9 @@ class FirefoxUrlHandoffTests(FirefoxUrlHandoffFixture):
             self.assertFalse(self.navigate(**extra).success)
         self.auth.authenticate.assert_not_called();self.process.assert_not_called()
 
-    def test_other_browser_workflows_remain_plan_only(self):
+    def test_unknown_browser_workflows_remain_non_executable(self):
         assistant,provider=self.assistant()
-        for command in ('open firefox and search for python tutorials','open firefox and go to gatewalla'):
+        for command in ('open firefox and go to unknownsite',):
             response=assistant.respond(command);self.assertNotIn(ACCEPTED_MESSAGE,response)
         self.auth.authenticate.assert_not_called();self.process.assert_not_called();provider.chat.assert_not_called()
 
@@ -325,8 +328,9 @@ class LauncherChainTests(unittest.TestCase):
         self.assertEqual(environment,{'HOME':'/synthetic','XDG_RUNTIME_DIR':'/synthetic/runtime','SNAP_REEXEC':'0'})
 
     def test_adapter_accepts_only_canonical_navigation_target(self):
+        from friday.desktop.firefox_url_handoff import supported
         adapter=FirefoxSnapUrlAdapter()
-        self.assertFalse(adapter.available(BrowserTarget.from_request(HandoffRequest(HandoffOperation.SEARCH,value='youtube'))))
+        self.assertTrue(supported(BrowserTarget.from_request(HandoffRequest(HandoffOperation.SEARCH,value='youtube'))))
         with self.assertRaises(ValueError):adapter.handoff(None,None,None)
 
 

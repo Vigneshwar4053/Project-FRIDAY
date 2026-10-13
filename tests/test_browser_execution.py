@@ -55,7 +55,7 @@ class TargetTests(unittest.TestCase):
                       'https://www.youtube.com/#x','https://www.youtube.com/?x=1',
                       'https://www.youtube.com/?','https://www.youtube.com/#',
                       'https://www.youtube.com/\n','https://www.youtube.com\\@evil/',
-                      'https://www..youtube.com/','https://[::1]/','gatewalla'):
+                      'https://www..youtube.com/','https://[::1]/','unknownsite'):
             with self.subTest(value=value), self.assertRaises(ValueError): exact_destination(value)
     def test_search_encoding(self):
         target=BrowserTarget.from_request(HandoffRequest(HandoffOperation.SEARCH,value='C++ & Python #1 café'))
@@ -71,7 +71,7 @@ class TargetTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIsNotNone(compile_browser_plan(parse_workflow(command)))
     def test_unknown_site_never_invents_domain(self):
-        plan=parse_workflow('open firefox and go to gatewalla')
+        plan=parse_workflow('open firefox and go to unknownsite')
         self.assertIsNotNone(plan.clarification); self.assertIsNone(compile_browser_plan(plan))
         self.assertNotIn('gatewalla.com',plan.response())
     def test_plan_shape_not_generic_interpreter(self):
@@ -232,7 +232,7 @@ class BrowserExecutionTests(DiscoveryWorkflowFixture):
         self.auth.authenticate.assert_not_called();self.process.assert_not_called()
     def test_unknown_site_zero_execution(self):
         assistant,provider=self.assistant()
-        response=assistant.respond('open firefox and go to gatewalla')
+        response=assistant.respond('open firefox and go to unknownsite')
         self.assertIn('unrecognized',response);self.auth.authenticate.assert_not_called()
         self.assertEqual(self.backend.calls,[]);self.process.assert_not_called()
     def test_unreviewed_exact_url_zero_execution(self):

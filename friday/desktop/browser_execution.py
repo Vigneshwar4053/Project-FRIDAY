@@ -9,7 +9,6 @@ identity, bound every call, and support cancellation without killing user apps.
 """
 from dataclasses import dataclass
 from threading import Lock
-from urllib.parse import urlencode
 
 from friday.desktop.accessibility import Deadline, DesktopFailure
 from friday.desktop.handoffs import HandoffOperation, HandoffRequest
@@ -17,10 +16,9 @@ from friday.desktop.observation import WindowRef, identifier
 from friday.desktop.workflows import WorkflowAction, WorkflowPlan, bounded_value
 from friday.security.owner import OwnerRequest, SensitiveOperation, OwnerAuthenticationError
 from friday.tools.access import FolderDecision
-from friday.desktop.websites import WEBSITES, approved_url, site_destination
+from friday.desktop.websites import WEBSITES, approved_url, site_destination, search_url, SEARCH_PROVIDER
 
 SITES = WEBSITES
-SEARCH_PROVIDER = 'https://duckduckgo.com/'
 
 
 def exact_destination(value):
@@ -50,9 +48,7 @@ class BrowserTarget:
                 raise ValueError('Canonical reviewed destination required.')
         elif self.operation is HandoffOperation.SEARCH:
             bounded_value(self.value)
-            if len(self.value.encode('utf-8')) > 256 or not self.value.strip():
-                raise ValueError('Search query is too long or empty.')
-            if self.url != SEARCH_PROVIDER + '?' + urlencode({'q': self.value}):
+            if self.url != search_url(self.value):
                 raise ValueError('Fixed search provider and exact encoding required.')
         else:
             raise ValueError('Typed browser operation required.')
@@ -64,8 +60,7 @@ class BrowserTarget:
         if request.operation is HandoffOperation.NAVIGATE:
             value = exact_destination(request.value)
             return cls(request.operation, value, value)
-        return cls(request.operation, request.value,
-                   SEARCH_PROVIDER + '?' + urlencode({'q': request.value}))
+        return cls(request.operation, request.value, search_url(request.value))
 
     @property
     def scope(self):

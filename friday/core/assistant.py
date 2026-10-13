@@ -277,6 +277,11 @@ class FridayAssistant:
                     if request is not None and available is not None and available(BrowserTarget.from_request(request)):
                         result=self.tool_manager.execute(ToolRequest(request.operation.value,{'url' if request.operation.value=='navigate_firefox_to_exact_url' else 'query':request.value}),persist_metadata=False)
                         return self.tool_presenter.format(result)
+                    if request is not None:
+                        handoff = getattr(desktop,'firefox_url_handoff',None)
+                        reason = getattr(getattr(handoff,'adapter',None),'reason',None)
+                        if reason:
+                            return reason
                 except ValueError:
                     return 'This browser destination or query is outside the reviewed policy. No workflow steps were executed.'
             return route.message

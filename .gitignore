@@ -15,6 +15,9 @@ secrets/
 data/*
 !data/.gitkeep
 
+# Downloaded cybersecurity corpus, provenance and derived local artifacts.
+/knowledge/cybersecurity/
+
 # Logs
 *.log
 logs/*

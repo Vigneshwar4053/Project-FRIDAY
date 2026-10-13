@@ -5,7 +5,7 @@ import ipaddress
 import re
 from urllib.parse import urlsplit
 from friday.tools.locations import command_text
-from friday.desktop.websites import WEBSITES, site_destination
+from friday.desktop.websites import WEBSITES, site_destination, search_url, site_search_query
 
 
 class WorkflowAction(StrEnum):
@@ -145,6 +145,37 @@ def _parse_workflow(message):
     single=re.fullmatch(r'open (.+)',raw,re.I)
     if single and site_destination(single[1]) is not None:
         return _browser_plan(site_destination(single[1]),WorkflowAction.URL)
+    # Explicit website intent never enters local file/project discovery.
+    explicit_site = re.fullmatch(
+        r'open (?:the )?(?:website|site) (.+)|open (.+) (?:website|site)|open (.+) in firefox',raw,re.I)
+    if explicit_site:
+        destination = site_destination(explicit_site[1] or explicit_site[2] or explicit_site[3])
+        if destination is not None:
+            return _browser_plan(destination,WorkflowAction.URL)
+        return WorkflowPlan((WorkflowStep(WorkflowAction.UNSUPPORTED),),
+            'That website is not registered. Provide its exact HTTPS URL for review.')
+    if single and single[1].startswith(('https://','http://')):
+        if single[1] in WEBSITES.values():
+            return _browser_plan(single[1],WorkflowAction.URL)
+        return WorkflowPlan((WorkflowStep(WorkflowAction.UNSUPPORTED),),
+            'That website URL is not registered. Provide its exact HTTPS URL for review.')
+    search = re.fullmatch(r'(?:search (?:firefox|google) for|search for|google) (.+)',raw,re.I)
+    scoped_search = re.fullmatch(r'search (.+?) for (.+)',raw,re.I) if search is None else None
+    compound_search = re.fullmatch(r'open firefox (?:and|then) search(?: for)? (.+)',raw,re.I)
+    if search or scoped_search or compound_search:
+        try:
+            if search:
+                query = search[1]
+            elif compound_search:
+                query = compound_search[1]
+            else:
+                query = site_search_query(scoped_search[1],scoped_search[2])
+            bounded_value(query)
+            search_url(query)
+            return _browser_plan(query,WorkflowAction.SEARCH)
+        except ValueError:
+            return WorkflowPlan((WorkflowStep(WorkflowAction.UNSUPPORTED),),
+                'Search query or site is outside the reviewed policy. Unknown websites require an exact HTTPS URL for review.')
     if not re.search(r'\s+(?:and|then)\s+',raw,re.I): return None
     def step(action,app=None,value=None,scope=None):
         return WorkflowStep(action,app,value,scope)
