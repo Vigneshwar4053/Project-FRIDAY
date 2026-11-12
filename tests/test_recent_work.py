@@ -322,7 +322,7 @@ class QueueTests(DesktopFixture):
         self.assertIn('Operation: navigate_folder',output)
         self.assertIn('Launch attempted; application process is running',output)
         self.assertIn('[1] Home — Ubuntu Files',output)
-        self.assertIn('Summary: FRIDAY started Ubuntu Files for Home folder.',output)
+        self.assertIn('Summary: ZORVYQ started Ubuntu Files for Home folder.',output)
         self.assertIn('Status: Window not verified.',output)
         self.assertIn('Resume: '+str(self.home),output)
         # CLI creates a separate manager at the same configured database path.
@@ -429,7 +429,7 @@ class QueueTests(DesktopFixture):
                 self.assertEqual(row['entry_id'],entry_id)
                 self.assertEqual(row['launch_status'],'launch_accepted')
                 queue=RecentWorkQueue(memory)
-                self.assertIn('Summary: FRIDAY started Ubuntu Files.',queue.show(detailed=True))
+                self.assertIn('Summary: ZORVYQ started Ubuntu Files.',queue.show(detailed=True))
                 self.assertIn('Status: Window not verified.',queue.show(detailed=True))
                 self.assertEqual(queue.get(entry_id)[1]['arguments'],{'application_id':'files'})
         output,_,_=self.cli(['Show Q','1','3','quit'],database_path=legacy)

@@ -72,7 +72,7 @@ class ModelManager:
         job = self.queue.next_job()
         return self.execute_job(job) if job is not None else None
 
-    def execute_job(self, job: ModelJob) -> ModelJob:
+    def execute_job(self, job: ModelJob, *, before_inference=None) -> ModelJob:
         """Execute a pending supplied job immediately, bypassing queue priority.
 
         Ordinary generation errors are recorded and returned as failed jobs.
@@ -94,8 +94,10 @@ class ModelManager:
             if job.profile is not None:
                 size = len(json.dumps(job.messages, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
                 if size > job.profile.input_byte_limit:
-                    raise ProviderError('Request context exceeds its configured input budget.')
+                    raise ProviderError('Request context exceeds its configured input budget.', category='context_budget')
             with self.synchronization:
+                if before_inference is not None:
+                    before_inference()
                 self.registry.mark_active(job.model)
                 mode = nullcontext()
                 if job.profile is not None:
@@ -116,12 +118,15 @@ class ModelManager:
             job.result = response.strip()
             job.status = JobStatus.COMPLETED
         except SynchronizationError as exc:
+            job.error_category = 'synchronization_failure'
             job.error = f"Model synchronization failed: {exc}"
             job.status = JobStatus.FAILED
         except ProviderError as exc:
+            job.error_category = exc.category
             job.error = str(exc)
             job.status = JobStatus.FAILED
         except Exception:
+            job.error_category = 'provider_failure'
             # Unexpected provider errors must not spill response content into the UI.
             job.error = 'Model generation failed unexpectedly.'
             job.status = JobStatus.FAILED
@@ -135,7 +140,8 @@ class ModelManager:
             self._executing = False
         return job
 
-    def generate(self, messages: list[dict[str, str]], *, profile: InferenceProfile | None = None) -> str:
+    def generate(self, messages: list[dict[str, str]], *, profile: InferenceProfile | None = None,
+                 before_inference=None, private=False) -> str:
         """Run this conversational request immediately; leave unrelated jobs queued.
 
         This convenience path explicitly executes its supplied job. Use
@@ -144,7 +150,14 @@ class ModelManager:
         if profile is not None and not isinstance(profile, InferenceProfile):
             raise ProviderError("Invalid inference profile; no model request was made.")
         job = self.submit_job(self.create_job(messages, profile=profile))
-        self.execute_job(job)
-        if job.status == JobStatus.FAILED:
-            raise ProviderError(job.error)
-        return job.result
+        try:
+            self.execute_job(job, before_inference=before_inference)
+            if job.status == JobStatus.FAILED:
+                raise ProviderError(job.error, category=job.error_category)
+            return job.result
+        finally:
+            if private:
+                job.messages = []
+                job.result = None
+                if job.error is not None:
+                    job.error = 'Private knowledge generation failed.'

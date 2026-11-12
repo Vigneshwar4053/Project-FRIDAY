@@ -119,11 +119,11 @@ class RecentWorkQueue:
         app=row['application_id'];target=descriptor['path'] or descriptor['arguments'].get('url') or app
         if app=='files' and descriptor['operation']=='launch_application': target=str(Path.home())
         # Legacy default-browser locations are equivalent to the native folder
-        # workflow. New explicit FRIDAY Browser workflows remain distinct.
+        # workflow. New explicit ZORVYQ Browser workflows remain distinct.
         if app=='friday_browser' and descriptor['version']<4: app='files'
         return app,target
 
-    def rows(self):
+    def rows(self, limit=3):
         selected=[];seen=set();actual_seen=set()
         for row in self.memory.recent_work() if self.memory is not None else ():
             try:
@@ -132,7 +132,7 @@ class RecentWorkQueue:
                 selected.append(row);continue
             if key not in seen and actual not in actual_seen:
                 selected.append(row);seen.add(key);actual_seen.add(actual)
-        return tuple(selected[:3])
+        return tuple(selected[:limit])
 
     def decode(self, row):
         """Treat every database field as untrusted; reconstruct approved grammar."""
@@ -200,7 +200,7 @@ class RecentWorkQueue:
             selected.append(row['entry_id'])
             if not detailed:
                 from pathlib import Path
-                app={'files':'Ubuntu Files','friday_browser':'FRIDAY Browser','vscode':'VS Code','firefox':'Firefox'}[row['application_id']]
+                app={'files':'Ubuntu Files','friday_browser':'ZORVYQ Browser','vscode':'VS Code','firefox':'Firefox'}[row['application_id']]
                 title=app
                 if descriptor['path']:
                     label=Path(descriptor['path']).name
@@ -209,24 +209,24 @@ class RecentWorkQueue:
                 elif descriptor['arguments'].get('url'): title+=' — github.com'
                 lines.append(f'[{len(selected)}] {display(title)}')
                 continue
-            application={'files':'Ubuntu Files / Nautilus','friday_browser':'FRIDAY Browser','vscode':'VS Code','firefox':'Firefox'}[row['application_id']]
+            application={'files':'Ubuntu Files / Nautilus','friday_browser':'ZORVYQ Browser','vscode':'VS Code','firefox':'Firefox'}[row['application_id']]
             activity_type=('friday_browser_location' if descriptor['operation']=='navigate_browser' else 'nautilus_location') if descriptor['operation'] in {'open_folder','navigate_browser'} else row['activity_type']
             lines += [f'[{len(selected)}] {display(row["title"])} [{application}]',
                       '    Activity type: '+activity_type,
-                      '    Summary: ' + display(self.launch_summary(descriptor['operation'], descriptor['arguments'], row['application_id'])),
+                      '    Summary: ' + display(self.launch_summary(descriptor['operation'], descriptor['arguments'], row['application_id']).replace('FRIDAY', 'ZORVYQ')),
                       ('    Status: Managed location confirmed; compositor visibility not verified.' if descriptor['operation']=='navigate_browser' else '    Status: Window not verified.'),
-                      '    Resume: ' + ('FRIDAY Browser — ' if descriptor['operation']=='navigate_browser' else '') + display(row['safe_link'] or 'Open ' + {'vscode':'VS Code', 'firefox':'Firefox', 'files':'Ubuntu Files'}[row['application_id']] + '.')]
+                      '    Resume: ' + ('ZORVYQ Browser — ' if descriptor['operation']=='navigate_browser' else '') + display(row['safe_link'] or 'Open ' + {'vscode':'VS Code', 'firefox':'Firefox', 'files':'Ubuntu Files'}[row['application_id']] + '.')]
         self.menu_ids = tuple(selected)
         if selected: lines.append('Choose ' + ', '.join(str(i+1) for i in range(len(selected))) + ' to resume.')
         else: lines.append('No saved project activities.' if projects else 'No recent work saved yet.')
-        if detailed: lines.append('Saved FRIDAY-managed actions only; external application work and compositor visibility are unverified.')
+        if detailed: lines.append('Saved ZORVYQ-managed actions only; external application work and compositor visibility are unverified.')
         return '\n'.join(lines)
 
     def selection(self, text):
         if not self.menu_ids: return None
         ids = self.menu_ids
         self.menu_ids = ()  # One prompt context; any intervening input closes it.
-        conversion=re.fullmatch(r'resume q ([123]) in friday browser',text.casefold())
+        conversion=re.fullmatch(r'resume q ([123]) in (?:friday|zorvyq) browser',text.casefold())
         if conversion:
             if int(conversion[1])>len(ids): return 'invalid',{}
             return 'resume_activity',{'entry_id':ids[int(conversion[1])-1],'backend':'friday_browser'}

@@ -138,8 +138,29 @@ def normalized_fields(text):
 
 class LocalVoiceBackend:
     """Lazy: constructing the backend never opens a microphone or loads a model."""
-    def __init__(self, configuration: VoiceConfiguration):
+    def __init__(self, configuration: VoiceConfiguration, cancelled=None):
         self.configuration = configuration
+        self.cancelled = cancelled
+
+    def check_cancelled(self):
+        if self.cancelled is not None and self.cancelled.is_set():
+            error = VoiceError("Local voice action cancelled; microphone OFF.")
+            error.category = "cancelled"
+            raise error
+
+    def communicate(self, child, timeout):
+        if self.cancelled is None:
+            return child.communicate(timeout=timeout)
+        deadline = time.monotonic() + timeout
+        while True:
+            self.check_cancelled()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(child.args, timeout)
+            try:
+                return child.communicate(timeout=min(.1, remaining))
+            except subprocess.TimeoutExpired:
+                continue
 
     def verify(self):
         c = self.configuration
@@ -168,6 +189,7 @@ class LocalVoiceBackend:
                 raise VoiceError('Configured microphone identity differs; capture refused.')
             if status.read_text().strip() != 'closed':
                 raise VoiceError('Configured microphone is busy.')
+            self.check_cancelled()
             announce('RECORDING — remain quiet until SPEAK NOW. Ctrl+C cancels.')
             child = subprocess.Popen(['/usr/bin/arecord', '-D', c.device, '--fatal-errors',
                 '-t', 'wav', '-f', 'S16_LE', '-r', '48000', '-c', '2', '-d', str(c.duration + 4), str(path)],
@@ -180,6 +202,7 @@ class LocalVoiceBackend:
                 return int(data['hw_ptr'])
             previous = None
             while time.monotonic() - started < 2:
+                self.check_cancelled()
                 if child.poll() is not None:
                     raise VoiceError('Recording process exited unexpectedly before readiness.')
                 current = pointer()
@@ -208,7 +231,7 @@ class LocalVoiceBackend:
             # Natural completion avoids arecord's ambiguous exit-1 abort path.
             # The full window starts only after the flushed cue returns.
             try:
-                child.communicate(timeout=c.duration)
+                self.communicate(child, c.duration)
             except subprocess.TimeoutExpired:
                 if time.monotonic() - cue < c.duration:
                     raise VoiceError('Capture speech window could not be verified.')
@@ -216,7 +239,7 @@ class LocalVoiceBackend:
                 # arecord's duration is a frame limit. Allow at most its four
                 # seconds of readiness headroom to finish naturally; do not
                 # accept an interrupted or killed recording as successful.
-                child.communicate(timeout=4)
+                self.communicate(child, 4)
             else:
                 if time.monotonic() - cue < c.duration:
                     if child.returncode is not None and child.returncode < 0:
@@ -256,12 +279,13 @@ class LocalVoiceBackend:
         c = self.configuration
         child = None
         try:
+            self.check_cancelled()
             validate_wav(path, maximum_frames=48000 * (c.duration + 4))
             child = subprocess.Popen([str(c.binary), '-m', str(c.model), '-f', str(path),
                 '-l', 'en', '-t', '4', '--no-gpu', '--no-prints', '--no-timestamps',
                 '--no-fallback', '--beam-size', '5', '--best-of', '5', '--temperature', '0'],
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
-            stdout, _ = child.communicate(timeout=60)
+            stdout, _ = self.communicate(child, 60)
             if child.returncode != 0:
                 raise VoiceError('Offline transcription failed.')
             if len(stdout) > 4096:

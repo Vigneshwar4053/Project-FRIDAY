@@ -3,6 +3,7 @@ from contextlib import nullcontext
 import http.client
 import json
 import math
+import socket
 from threading import Event
 from time import monotonic
 from urllib.parse import urlsplit
@@ -11,6 +12,7 @@ from friday.intelligence.models import IndexManifest, KnowledgeError
 from friday.intelligence.embeddings import normalized_vector
 from friday.intelligence.ingestion import normalize_text, reject_secrets
 from friday.sync.base import Synchronization
+from friday.sync import SynchronizationError
 
 
 def _unique(pairs):
@@ -48,7 +50,7 @@ class OllamaEmbeddingProvider:
 
     def _check(self,deadline):
         if self.cancelled.is_set():raise KnowledgeError('Embedding request cancelled.')
-        if monotonic()>=deadline:raise KnowledgeError('Embedding request exceeded its deadline.')
+        if monotonic()>=deadline:raise KnowledgeError('Embedding request exceeded its deadline.', category='generation_timeout')
 
     def _request(self,path,deadline,payload=None):
         self._check(deadline)
@@ -76,6 +78,10 @@ class OllamaEmbeddingProvider:
             self._check(deadline)
             return result
         except KnowledgeError:raise
+        except (TimeoutError, socket.timeout):
+            raise KnowledgeError('Local Ollama embedding deadline exceeded.', category='generation_timeout') from None
+        except (OSError, http.client.HTTPException):
+            raise KnowledgeError('Local Ollama embedding connection failed.', category='connection_failure') from None
         except Exception:raise KnowledgeError('Local Ollama embedding transport failed safely.') from None
         finally:connection.close()
 
@@ -104,7 +110,7 @@ class OllamaEmbeddingProvider:
                 self._verify(deadline)
                 resident=self._request('/api/ps',deadline).get('models')
                 if type(resident) is not list or resident:
-                    raise KnowledgeError('Embedding deferred: an Ollama workload is already resident; no model was evicted.')
+                    raise KnowledgeError('Embedding deferred: an Ollama workload is already resident; no model was evicted.', category='residency_conflict')
                 started=monotonic()
                 result=self._request('/api/embed',deadline,{'model':self.manifest.model,
                     'input':[prefix+t for t in texts],'truncate':False,'keep_alive':0,
@@ -116,7 +122,7 @@ class OllamaEmbeddingProvider:
                 self._verify(deadline)
                 after=self._request('/api/ps',deadline).get('models')
                 if type(after) is not list or any(type(m) is not dict or m.get('name')!=self.manifest.model for m in after):
-                    raise KnowledgeError('External Ollama workload appeared during embedding; no model was evicted.')
+                    raise KnowledgeError('External Ollama workload appeared during embedding; no model was evicted.', category='residency_conflict')
                 def counter(name):
                     value=result.get(name)
                     return value if type(value) is int and value>=0 else None
@@ -124,6 +130,8 @@ class OllamaEmbeddingProvider:
                     'total_ns':counter('total_duration'),'prompt_tokens':counter('prompt_eval_count')}
                 return vectors
         except KnowledgeError:raise
+        except SynchronizationError:
+            raise KnowledgeError('Embedding synchronization failed safely.', category='synchronization_failure') from None
         except Exception:raise KnowledgeError('Embedding synchronization failed safely.') from None
 
     def embed_documents(self,texts):return self._embed(texts,self.manifest.document_prefix)

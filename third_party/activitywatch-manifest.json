@@ -1,0 +1,25 @@
+{
+  "version": "v0.14.1",
+  "upstream": "https://github.com/ActivityWatch/activitywatch.git",
+  "commit": "2b995517487ba6e1e572bd4d4e53f9dcc43c90a2",
+  "archive_url": "https://github.com/ActivityWatch/activitywatch/releases/download/v0.14.1/activitywatch-v0.14.1-linux-x86_64.zip",
+  "bytes": 196236767,
+  "sha256": "211514a8912c0a399a8c7048101b699e0a2fedb5e81b5ed224304d5c8e091f2a",
+  "runtime": "third_party/activitywatch-runtime/v0.14.1",
+  "awatcher": {
+    "version": "v0.4.0",
+    "archive_sha256": "8cdbb99916800bc509afc28785d85d5a1f74fdcea0d378d8019e2244df507eca",
+    "source": "https://github.com/2e3s/awatcher",
+    "runtime": "third_party/awatcher-runtime/v0.4.0"
+  },
+  "executables": {
+    "server": {
+      "path": "third_party/activitywatch-runtime/v0.14.1/activitywatch/aw-server/aw-server",
+      "sha256": "9431cc360b3bf0a1ded2f5b7d29ec607bdd8227729a79daf999414d847828e6b"
+    },
+    "wayland": {
+      "path": "third_party/awatcher-runtime/v0.4.0/aw-awatcher",
+      "sha256": "6b895c60f6c79044ddbc5bd223788aefc0aa4a178986a824c6b2e33f9895ce73"
+    }
+  }
+}

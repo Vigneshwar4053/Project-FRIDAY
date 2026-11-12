@@ -1,0 +1,2 @@
+# Owner-approved Qt Widgets dependency; no Addons or WebEngine.
+PySide6-Essentials==6.11.3

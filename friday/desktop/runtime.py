@@ -112,7 +112,7 @@ class DesktopExecutor:
 
     def launch(self,lease):
         if self.launch_count>=4:
-            return {'status':'unavailable','message':'Desktop launch limit reached for this session; restart FRIDAY before more launches.'}
+            return {'status':'unavailable','message':'Desktop launch limit reached for this session; restart ZORVYQ before more launches.'}
         with ExitStack() as resources:
             argv=[str(lease['executable'])]; fds=[lease['binary_fd']]
             if lease.get('snap'):
@@ -213,7 +213,7 @@ class DesktopPermissionAdapter:
             return {'result':{'status':'recent_work', 'message':self.recent.show(projects=arguments.get('projects',False),detailed=arguments.get('detailed',False))}}
         if operation == 'browser_status':
             diagnostics=self.browser.transport.diagnostics()
-            return {'result':{'status':'browser_status','message':'FRIDAY Browser diagnostics: '+json.dumps(diagnostics,sort_keys=True)}}
+            return {'result':{'status':'browser_status','message':'ZORVYQ Browser diagnostics: '+json.dumps(diagnostics,sort_keys=True)}}
         stored = None
         resolved=None
         if operation in {'discover_target','discovery_selection'}:
@@ -291,7 +291,7 @@ class DesktopPermissionAdapter:
             if operation=='resume_project':
                 candidates=self.sessions.yesterday(self.projects)
                 if project_id is not None: candidates=tuple(item for item in candidates if item[0]==project_id)
-                if not candidates: return self._blocked('No verified FRIDAY-managed project launch from yesterday is available.','no_session')
+                if not candidates: return self._blocked('No verified ZORVYQ-managed project launch from yesterday is available.','no_session')
                 if len(candidates)>1:
                     return self._blocked('Multiple verified projects match. Choose by typing "Resume yesterday\'s <project_id> project": '+', '.join(sorted(item[0] for item in candidates)), 'needs_selection')
                 project_id,expected=candidates[0]
@@ -339,8 +339,8 @@ class DesktopPermissionAdapter:
             else: directory_fd=stack.enter_context(directory_descriptor(path))
             if (os.fstat(directory_fd).st_dev,os.fstat(directory_fd).st_ino)!=identity: raise ValueError('Target changed.')
         lease={'operation':operation,'target':entry.application_id+' : '+entry.display_name+' / '+str(executable)+(' / '+str(path) if path is not None else '')+(' / '+url if url else ''),
-                'risk':'desktop_navigation' if application_id=='files' else 'execute','effect':('Reopen a registered project from an accepted FRIDAY-managed launch yesterday. ' if operation=='resume_project' else '')+
-                ('Saved activity uses Ubuntu Files / Nautilus, not FRIDAY Browser. ' if stored is not None and application_id=='files' else '')+'Launch '+entry.display_name+(' with the exact verified folder/project. No FRIDAY read permission.' if path else '.')+
+                'risk':'desktop_navigation' if application_id=='files' else 'execute','effect':('Reopen a registered project from an accepted ZORVYQ-managed launch yesterday. ' if operation=='resume_project' else '')+
+                ('Saved activity uses Ubuntu Files / Nautilus, not ZORVYQ Browser. ' if stored is not None and application_id=='files' else '')+'Launch '+entry.display_name+(' with the exact verified folder/project. No ZORVYQ read permission.' if path else '.')+
                 (' Uses a fresh private editor profile, extensions disabled, automatic tasks off, workspace trust required.' if application_id=='vscode' else ''),
                 'application_id':application_id,'project_id':project_id,'path':path,'identity':identity,'home':home,'url':url,
                 'record_operation':'open_project' if operation=='resume_project' else operation,
@@ -359,7 +359,7 @@ class DesktopPermissionAdapter:
         # Q deduplication is independent of process/window state. No speculative
         # window receipt or cooldown can suppress a requested location.
         if self.executor.launch_count>=4:
-            return self._blocked('Desktop launch limit reached: four processes have been started this session. No new process was started; restart FRIDAY before another launch.',
+            return self._blocked('Desktop launch limit reached: four processes have been started this session. No new process was started; restart ZORVYQ before another launch.',
                                  'launch_limit_reached')
         if retry: lease['effect']='Explicit retry may create another window. '+lease['effect']
         if self.applications.production and application_id=='vscode' and path is not None:
@@ -423,7 +423,7 @@ class DesktopPermissionAdapter:
             arguments={'folder_id':target['folder_id']};expected=tuple(target['identity'])
         elif operation=='browser_contents':
             if not self.browser.active or not self.browser.transport.alive():
-                return self._blocked('FRIDAY Browser is closed; open an approved location first.','browser_closed')
+                return self._blocked('ZORVYQ Browser is closed; open an approved location first.','browser_closed')
             target=self.browser.history[self.browser.cursor]
             arguments={'folder_id':target['folder_id']};expected=tuple(target['identity'])
         folder=arguments['folder_id'];home=folder=='home'
@@ -444,20 +444,20 @@ class DesktopPermissionAdapter:
         if operation=='browser_contents':
             return {'browser':True,'contents':True,'path':path,'identity':identity,'home':home,'requires_approval':False}
         lease={'browser':True,'contents':False,'operation':'navigate_browser',
-               'target':'FRIDAY Browser / '+str(path),'risk':'desktop_navigation',
-               'effect':'Display this exact approved location in the one FRIDAY Browser window. Directory contents remain hidden; no read/open/modify grant.',
+               'target':'ZORVYQ Browser / '+str(path),'risk':'desktop_navigation',
+               'effect':'Display this exact approved location in the one ZORVYQ Browser window. Directory contents remain hidden; no read/open/modify grant.',
                'path':path,'identity':identity,'home':home,'application_id':'friday_browser',
                'record_operation':'navigate_browser','record_arguments':{'folder_id':folder},
                'url':None,'project_id':None,'position':position,'environment':environment,
                'requires_approval':True,'prepared':None}
         if stored is not None and stored['operation']=='open_folder':
-            lease['effect']='Resume the saved Nautilus location in the separate FRIDAY Browser. The saved Nautilus record is not rewritten; a confirmed Browser activity enters the three-slot Q. '+lease['effect']
+            lease['effect']='Resume the saved Nautilus location in the separate ZORVYQ Browser. The saved Nautilus record is not rewritten; a confirmed Browser activity enters the three-slot Q. '+lease['effect']
         if not self.browser.transport.alive():
             if self.executor.launch_count>=4:
-                return self._blocked('Desktop launch limit reached: four processes started this session; FRIDAY Browser cannot be reopened.','launch_limit_reached')
+                return self._blocked('Desktop launch limit reached: four processes started this session; ZORVYQ Browser cannot be reopened.','launch_limit_reached')
             try: lease['prepared']=stack.enter_context(self.browser.transport.reviewed_launch())
-            except (OSError,ValueError): return self._blocked('Reviewed FRIDAY Browser runtime is unavailable or untrusted; no unsafe fallback.','unavailable')
-            lease['launch_approval']=DesktopApproval('launch_browser','FRIDAY Browser','Start one isolated GTK renderer. No folder read permission.','execute')
+            except (OSError,ValueError): return self._blocked('Reviewed ZORVYQ Browser runtime is unavailable or untrusted; no unsafe fallback.','unavailable')
+            lease['launch_approval']=DesktopApproval('launch_browser','ZORVYQ Browser','Start one isolated GTK renderer. No folder read permission.','execute')
         return lease
 
     @contextmanager
@@ -465,7 +465,7 @@ class DesktopPermissionAdapter:
         with ExitStack() as stack:
             try: lease=self._prepare(request,stack)
             except FilesystemAuthorizationDenied: raise PermissionError('Filesystem search denied.') from None
-            except BrowserHealthUnavailable: lease=self._blocked('FRIDAY Browser has not exited, but its health is unconfirmed. No replacement was launched. Close its window manually before reopening; use show browser status for diagnostics.','browser_health_unverified')
+            except BrowserHealthUnavailable: lease=self._blocked('ZORVYQ Browser has not exited, but its health is unconfirmed. No replacement was launched. Close its window manually before reopening; use show browser status for diagnostics.','browser_health_unverified')
             except (OSError,ValueError): lease=self._blocked('Desktop target is unavailable, sensitive or changed; no launch attempted.')
             if lease.get('browser_target'):
                 self.browser_execution.authorize(lease,self.owner_auth,self.approval,DesktopApproval)
@@ -566,7 +566,7 @@ class DesktopPermissionAdapter:
             self._revalidate_handoff(lease)
             if type(proof) is not HandoffProof or not proof.matches(target):
                 return {'status':'handoff_unverified','message':'VS Code launch was attempted, but the exact displayed target was not verified. Task stopped; completion is not claimed.'}
-            return {'status':'verified','message':'Verified: reviewed VS Code window displays the exact approved '+('project directory.' if target.operation is HandoffOperation.PROJECT else 'file. No file contents were read by FRIDAY.')}
+            return {'status':'verified','message':'Verified: reviewed VS Code window displays the exact approved '+('project directory.' if target.operation is HandoffOperation.PROJECT else 'file. No file contents were read by ZORVYQ.')}
         except DesktopFailure as failure:
             return {'status':failure.status.value,'message':'VS Code handoff stopped on cancellation or timeout; no target completion is claimed.'}
         except (Exception,KeyboardInterrupt):
@@ -602,7 +602,7 @@ class DesktopPermissionAdapter:
             try: transport.request('contents',location=str(lease['path']),rows=rows)
             except (OSError,ValueError,TypeError):
                 transport.failed();return {'status':'browser_failed','message':'Browser closed or listing presentation failed.'}
-            return {'status':'contents_displayed','message':'Authorized bounded directory listing displayed in FRIDAY Browser. No files were opened or modified.'}
+            return {'status':'contents_displayed','message':'Authorized bounded directory listing displayed in ZORVYQ Browser. No files were opened or modified.'}
         try:
             if lease['prepared'] is not None:
                 transport.start(lease['prepared'],lease['environment'])
@@ -612,10 +612,10 @@ class DesktopPermissionAdapter:
             if self._directory(lease['path'],home=lease['home'])[1]!=lease['identity']: raise ValueError('Navigation target changed.')
         except (OSError,ValueError,TypeError):
             transport.failed()
-            return {'status':'browser_failed','message':'FRIDAY Browser navigation failed or its window closed. No navigation activity was saved.'}
+            return {'status':'browser_failed','message':'ZORVYQ Browser navigation failed or its window closed. No navigation activity was saved.'}
         self.browser.commit({'folder_id':lease['record_arguments']['folder_id'],
                              'path':str(lease['path']),'identity':list(lease['identity'])},lease['position'])
-        result={'status':'navigation_confirmed','message':('FRIDAY Browser confirmed the location is already selected. ' if already_selected else 'FRIDAY Browser confirmed the requested location in its managed window. ')+'Contents require separate read permission; compositor visibility is not independently verified.'}
+        result={'status':'navigation_confirmed','message':('ZORVYQ Browser confirmed the location is already selected. ' if already_selected else 'ZORVYQ Browser confirmed the requested location in its managed window. ')+'Contents require separate read permission; compositor visibility is not independently verified.'}
         if lease['persist_metadata']:
             try: result['recent_work_recorded']=self.recent.record(lease,'navigation_confirmed')
             except Exception:

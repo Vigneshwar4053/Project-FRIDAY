@@ -131,6 +131,6 @@ class OllamaTests(unittest.TestCase):
              patch('builtins.input', side_effect=['hello', 'exit']), \
              patch('sys.stdout', new_callable=io.StringIO) as output:
             main(speech_backend=Mock())
-        self.assertIn('FRIDAY: Hello, Vigneshwar!', output.getvalue())
+        self.assertIn('ZORVYQ: Hello, Vigneshwar!', output.getvalue())
         self.assertNotIn('synthetic private trace', output.getvalue())
         self.assertNotIn('</think>', output.getvalue())

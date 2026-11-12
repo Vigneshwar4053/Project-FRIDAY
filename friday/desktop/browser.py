@@ -19,13 +19,13 @@ MAX_PACKET=65536
 class BrowserHealthUnavailable(ValueError):
     """Health unknown: do not destroy a live process or offer another launch."""
 # Updated only with the reviewed worker source, never with model/user input.
-WORKER_SHA256='30eee7b1b9e497e9015f1e47d863850fa6baeded5c242d320b39965a86fb27b8'
+WORKER_SHA256='d6619e9c95e018b2f56ae95ee233d4acb9426fec1d48b80fa2a6d6bc69e91e61'
 
 
 class BrowserTransport:
     def __init__(self, interpreters=None, profile_root=None):
         self.interpreters=interpreters or ApplicationRegistry((Application(
-            'browser_runtime','FRIDAY Browser runtime',(),
+            'browser_runtime','ZORVYQ Browser runtime',(),
             tuple(Path('/usr/bin')/name for name in ('python3.14','python3.13','python3.12')),''),))
         self.child=None;self.channel=None;self.sequence=0;self.current=None
         self.profile_root=Path(profile_root) if profile_root is not None else Path(__file__).parents[2]/'data/browser-profiles'

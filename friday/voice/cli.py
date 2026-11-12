@@ -33,15 +33,15 @@ def voice_turn(assistant, backend, *, read=input, write=print, interactive=None,
             transcript = backend.transcribe(path)
         # No raw audio remains at either confirmation or filesystem permission prompts.
         if not isinstance(transcript, str) or not transcript.strip():
-            write('No speech recognized; nothing sent to FRIDAY.')
+            write('No speech recognized; nothing sent to ZORVYQ.')
             return None
         transcript = transcript.strip()
         if len(transcript.encode('utf-8')) > 4096 or any(
                 (ord(c) < 32 and c not in '\n\t') or ord(c) == 127 for c in transcript):
             raise VoiceError('Transcript failed validation.')
         write('Recognized transcript: ' + json.dumps(transcript, ensure_ascii=True))
-        if read('Send this transcript to FRIDAY? [y/N] ').strip().casefold() != 'y':
-            write('Transcript discarded; nothing sent to FRIDAY. Type /voice to retry.')
+        if read('Send this transcript to ZORVYQ? [y/N] ').strip().casefold() != 'y':
+            write('Transcript discarded; nothing sent to ZORVYQ. Type /voice to retry.')
             return None
         return assistant.respond(transcript, persist=False)
     except ProcessCleanupError:

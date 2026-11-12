@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ZORVYQ
+Comment=Private local-first AI assistant
+Exec=@LAUNCHER@
+Icon=@ICON@
+Terminal=false
+Categories=Utility;Education;
+StartupNotify=true
+StartupWMClass=com.zorvyq.ZORVYQ

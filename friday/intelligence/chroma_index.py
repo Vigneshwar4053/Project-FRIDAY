@@ -59,7 +59,7 @@ def _private_tree(path):
                 raise RuntimeError('Unsafe vector storage')
 
 
-def _worker(channel,path,manifest_values):
+def _worker(channel,path,manifest_values,existing_only=False,read_only=False):
     client=None
     try:
         # No inherited cloud credentials, telemetry endpoints or loader settings.
@@ -78,11 +78,15 @@ def _worker(channel,path,manifest_values):
         chromadb_config = importlib.import_module('chromadb.config')
         Settings = chromadb_config.Settings
         manifest=IndexManifest(**manifest_values)
-        client=chromadb.PersistentClient(path=path,settings=Settings(_env_file=None,anonymized_telemetry=False,allow_reset=False))
+        if read_only and not existing_only:raise RuntimeError('Read-only worker requires existing-only storage')
+        options={'_env_file':None,'anonymized_telemetry':False,'allow_reset':False}
+        if read_only:options['migrations']='validate'
+        client=chromadb.PersistentClient(path=path,settings=Settings(**options))
         name='friday_'+manifest.generation_id.removeprefix('idx_')[:48]
         expected={'friday_manifest':fingerprint(asdict(manifest)),'hnsw:space':'cosine'}
         try:collection=client.get_collection(name,embedding_function=None)
         except chromadb.errors.NotFoundError:
+            if existing_only:raise RuntimeError('Approved collection is missing')
             collection=client.create_collection(name,embedding_function=None,metadata=expected,
                 configuration={'hnsw':{'space':'cosine','num_threads':2}})
         if collection.metadata!=expected:raise RuntimeError('Index manifest changed')
@@ -92,6 +96,8 @@ def _worker(channel,path,manifest_values):
         while True:
             operation,payload=channel.recv()
             if operation=='close':break
+            if read_only and operation not in {'count','inspect','query'}:
+                raise RuntimeError('Read-only vector operation required')
             if operation=='upsert':
                 collection.upsert(ids=[r['chunk_id'] for r in payload],embeddings=[list(r['vector']) for r in payload],
                     metadatas=[{k:r[k] for k in ('source_id','revision_id','content_sha256')} for r in payload])
@@ -126,8 +132,9 @@ class ChromaVectorIndex:
     Local paths are explicit. No implicit embeddings, SDK loaders or document text
     are sent to Chroma. SQLite remains authoritative for consent and revisions.
     """
-    def __init__(self,path,manifest,*,timeout=30,cancelled=None):
+    def __init__(self,path,manifest,*,timeout=30,cancelled=None,existing_only=False):
         if type(manifest) is not IndexManifest:raise KnowledgeError('Typed Chroma manifest required.')
+        if type(existing_only) is not bool:raise KnowledgeError('Invalid existing-index policy.')
         if type(timeout) not in (int,float) or not math.isfinite(timeout) or not 1<=timeout<=60:
             raise KnowledgeError('Invalid Chroma timeout.')
         path=lexical_path(str(path))
@@ -135,13 +142,15 @@ class ChromaVectorIndex:
         self.manifest=manifest;self.timeout=timeout;self.cancelled=cancelled if cancelled is not None else Event()
         self._lock=Lock();self._closed=False;self._process=None;self._channel=None
         try:
-            with directory_descriptor(path,create=True) as fd:
+            with directory_descriptor(path,create=not existing_only) as fd:
                 info=os.fstat(fd)
                 if info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700:
                     raise KnowledgeError('Vector storage must be private and owner-controlled.')
+            if existing_only and not (path/'chroma.sqlite3').is_file():
+                raise KnowledgeError('Existing Chroma database is unavailable.')
             context=multiprocessing.get_context('spawn')
             parent,child=context.Pipe();self._channel=parent
-            self._process=context.Process(target=_worker,args=(child,str(path),asdict(manifest)),daemon=False)
+            self._process=context.Process(target=_worker,args=(child,str(path),asdict(manifest),existing_only),daemon=False)
             try:self._process.start()
             finally:child.close()
             status,_=self._receive(monotonic()+timeout)
