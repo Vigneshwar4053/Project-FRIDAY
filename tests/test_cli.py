@@ -32,7 +32,7 @@ class CLITests(unittest.TestCase):
     def test_exit_aliases(self):
         for command in ('exit', 'quit', '/bye', ' EXIT '):
             output, calls = self.run_cli([command])
-            self.assertIn('FRIDAY LOCAL AI', output)
+            self.assertIn('ZORVYQ LOCAL AI', output)
             self.assertIn('Model: qwen3:4b', output)
             self.assertIn('Goodbye.', output)
             self.assertEqual(calls, 0)
@@ -56,7 +56,7 @@ class CLITests(unittest.TestCase):
 
     def test_blank_then_conversation(self):
         output, calls = self.run_cli([' ', 'Hi', 'quit'])
-        self.assertIn('FRIDAY: Hello', output)
+        self.assertIn('ZORVYQ: Hello', output)
         self.assertEqual(calls, 1)
 
     def test_connection_error_recovers(self):

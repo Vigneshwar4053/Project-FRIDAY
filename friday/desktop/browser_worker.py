@@ -43,13 +43,13 @@ def main():
     if not Gtk.init_check(): raise RuntimeError('No local GTK display.')
     channel=socket.socket(fileno=int(sys.argv[1]));channel.setblocking(False)
     loop=GLib.MainLoop()
-    window=Gtk.Window(title='FRIDAY Browser')
+    window=Gtk.Window(title='ZORVYQ Browser')
     window.set_default_size(680,480)
     box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
     box.set_margin_top(16);box.set_margin_bottom(16);box.set_margin_start(16);box.set_margin_end(16)
     location=Gtk.Label(label='Awaiting approved location',xalign=0);location.set_selectable(True);location.set_wrap(True)
-    notice=Gtk.Label(label='Contents hidden. Request list browser contents in the FRIDAY terminal.',xalign=0);notice.set_wrap(True)
-    guidance=Gtk.Label(label='Navigate in FRIDAY: open downloads in friday browser · open documents in friday browser · go back · go forward',xalign=0);guidance.set_wrap(True)
+    notice=Gtk.Label(label='Contents hidden. Request list browser contents through ZORVYQ AI Chat.',xalign=0);notice.set_wrap(True)
+    guidance=Gtk.Label(label='Navigate in ZORVYQ: open downloads in zorvyq browser · open documents in zorvyq browser · go back · go forward',xalign=0);guidance.set_wrap(True)
     listing=Gtk.Label(label='',xalign=0,yalign=0);listing.set_selectable(True);listing.set_wrap(True)
     scroll=Gtk.ScrolledWindow();scroll.set_vexpand(True);scroll.set_child(listing)
     for widget in (location,notice,guidance,scroll): box.append(widget)
@@ -89,7 +89,7 @@ def main():
             if command['op']=='close': loop.quit();return False
             if command['op']=='navigate':
                 current=command['location'];location.set_text(current)
-                listing.set_text('');notice.set_text('Contents hidden. Request list browser contents in the FRIDAY terminal.')
+                listing.set_text('');notice.set_text('Contents hidden. Request list browser contents through ZORVYQ AI Chat.')
                 window.present()
             if command['op']=='contents':
                 if command['location']!=current: raise ValueError('Stale listing.')

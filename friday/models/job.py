@@ -27,6 +27,7 @@ class ModelJob:
     status: JobStatus = field(default=JobStatus.PENDING, init=False)
     result: str | None = field(default=None, init=False)
     error: str | None = field(default=None, init=False)
+    error_category: str | None = field(default=None, init=False)
     created_at: datetime = field(default_factory=utc_now, init=False)
     started_at: datetime | None = field(default=None, init=False)
     finished_at: datetime | None = field(default=None, init=False)

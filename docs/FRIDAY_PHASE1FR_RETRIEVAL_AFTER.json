@@ -1,0 +1,685 @@
+[
+  {
+    "id": "tls_versions",
+    "expected_source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+    "candidates": [
+      {
+        "rank": 1,
+        "chunk_id": "chk_6e484342c43e6561c6870d78efdfa2d4f1e896cc0a7e7bfaf2a5f9764644b8b3",
+        "distance": 0.22314506769180298,
+        "source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+        "title": "Transport Layer Security Cheat Sheet",
+        "evidence_bytes": 1636,
+        "decision": "accepted"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "chk_c6dae6f396bdf7b50d2ec88c041763c85f7e9ea6f420ed6ce9e234b88cd92cce",
+        "distance": 0.22589200735092163,
+        "source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+        "title": "Transport Layer Security Cheat Sheet",
+        "evidence_bytes": 1357,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "chk_e2c6b6c305758f7eab025ed6a9ed5213cd743f3faed6db37404fbcb68a562761",
+        "distance": 0.24505674839019775,
+        "source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+        "title": "Transport Layer Security Cheat Sheet",
+        "evidence_bytes": 1479,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "chk_3520f02d6998b49ac973ba0f1f54ced4f1968bd931c334e7aaab997b17a541a1",
+        "distance": 0.27751290798187256,
+        "source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+        "title": "Transport Layer Security Cheat Sheet",
+        "evidence_bytes": 1236,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "chk_5a9a0ef59e94e8f6fa62a383d153a7a37109f5cd97b5c03647cb6b2608d0beaa",
+        "distance": 0.2897229790687561,
+        "source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+        "title": "Transport Layer Security Cheat Sheet",
+        "evidence_bytes": 1601,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 6,
+        "chunk_id": "chk_b6ad56d970dc467958cc95aa177a3ce98e17f245a7dfd0f991a7dfb46333e9f2",
+        "distance": 0.29524463415145874,
+        "source_id": "src_dad67b1396e9cdeb1d45a067eb5fb9537b0f0939e95e6ce5acd4e4f1a99a5977",
+        "title": "2. Introduction",
+        "evidence_bytes": 1429,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 7,
+        "chunk_id": "chk_55d18d8c66094d38edea849a1c554f77b8c8c1836400081af22ef3b7e93b8a72",
+        "distance": 0.29907017946243286,
+        "source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+        "title": "Transport Layer Security Cheat Sheet",
+        "evidence_bytes": 802,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 8,
+        "chunk_id": "chk_667cf7dad8f5d9118d7ef53d85f69ff010510c192f63152ddfad44a4a28fbaf5",
+        "distance": 0.30802637338638306,
+        "source_id": "src_6ebf4436c7e8d7db0d880f9e92c20878a8352bda683eaf3ff3417aa195827c79",
+        "title": "Network Infrastructure Configuration",
+        "evidence_bytes": 1400,
+        "decision": "byte_budget"
+      }
+    ],
+    "selected": [
+      {
+        "source_id": "src_56f334b50964dc2d727618b2dee591391fadc6e91ef2b05d8c3111d731d2b159",
+        "chunk_id": "chk_6e484342c43e6561c6870d78efdfa2d4f1e896cc0a7e7bfaf2a5f9764644b8b3"
+      }
+    ],
+    "empty_reason": null
+  },
+  {
+    "id": "container_capabilities",
+    "expected_source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+    "candidates": [
+      {
+        "rank": 1,
+        "chunk_id": "chk_f3c84c6290b347da98280a4db2be9c59350a8ee5d29c70d607ef8132e0539d3f",
+        "distance": 0.2198486328125,
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "title": "Docker Security Cheat Sheet",
+        "evidence_bytes": 1587,
+        "decision": "accepted"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "chk_ca57fdfa32b5d7e00d861eff90154a53270df5489cd0b93c1c4633fa01e36c61",
+        "distance": 0.2222757339477539,
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "title": "Docker Security Cheat Sheet",
+        "evidence_bytes": 1529,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "chk_c588301529138ad38268a041476607d62a7c85752af9a7480fbcc407eb483d8d",
+        "distance": 0.2460951805114746,
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "title": "Docker Security Cheat Sheet",
+        "evidence_bytes": 1252,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "chk_6bcf4cae767ef61d9ec3ad48019dffede5897dd4db4598d415f95e6ea102e44f",
+        "distance": 0.25026488304138184,
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "title": "Docker Security Cheat Sheet",
+        "evidence_bytes": 1568,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "chk_e2a47b895aaf569dc80b3e969762af1c9e7d5320a9bfe9f964f07a7a6b3872e7",
+        "distance": 0.2561301589012146,
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "title": "Docker Security Cheat Sheet",
+        "evidence_bytes": 1400,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 6,
+        "chunk_id": "chk_1f0836ea9bcdf3b051783ef1d6ffb1f7becb614b7a2485a648464e7bec21fe0c",
+        "distance": 0.2682161331176758,
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "title": "Docker Security Cheat Sheet",
+        "evidence_bytes": 1518,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 7,
+        "chunk_id": "chk_8e4742ebf3029a8f4cb900c339bfb3dd3ba63a8a6b587b7222a87beece2299e1",
+        "distance": 0.2735646963119507,
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "title": "Docker Security Cheat Sheet",
+        "evidence_bytes": 1621,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 8,
+        "chunk_id": "chk_05f211191caecc6955f72537247ab1ffa4b05d705e1f95c3372ef211a0857180",
+        "distance": 0.27449893951416016,
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "title": "Docker Security Cheat Sheet",
+        "evidence_bytes": 1504,
+        "decision": "byte_budget"
+      }
+    ],
+    "selected": [
+      {
+        "source_id": "src_276592d89fae26f5bd2b9e59ad952b9898a487d185a929cca9cd81f352fdffe7",
+        "chunk_id": "chk_f3c84c6290b347da98280a4db2be9c59350a8ee5d29c70d607ef8132e0539d3f"
+      }
+    ],
+    "empty_reason": null
+  },
+  {
+    "id": "parameterized_sql",
+    "expected_source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+    "candidates": [
+      {
+        "rank": 1,
+        "chunk_id": "chk_34622baf6560c1d99bd637a3b189b6be36bcfeb2137297e816b27ed3764c2a5e",
+        "distance": 0.18122702836990356,
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "title": "SQL Injection Prevention Cheat Sheet",
+        "evidence_bytes": 1400,
+        "decision": "accepted"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "chk_7042c1319ea3e6cdfe510be2e373265297ff7f680b544bc917d5eddeff6d2d1e",
+        "distance": 0.22237074375152588,
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "title": "SQL Injection Prevention Cheat Sheet",
+        "evidence_bytes": 1336,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "chk_7b7e401d2fd14eb715ddef1cb4fd78ada15474c2b91b99880542be1e8c4d0ae9",
+        "distance": 0.2430868148803711,
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "title": "SQL Injection Prevention Cheat Sheet",
+        "evidence_bytes": 1298,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "chk_e46f83ea4a9e502f0cd4c6b01ffada10afede20d4ef196021e218914b71e6d4c",
+        "distance": 0.2574039101600647,
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "title": "SQL Injection Prevention Cheat Sheet",
+        "evidence_bytes": 1140,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "chk_0b16b168771dab2e93b67d60cc6cdffaa6c4ac136fa1a618c3b1da7e6ffad79e",
+        "distance": 0.26134711503982544,
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "title": "SQL Injection Prevention Cheat Sheet",
+        "evidence_bytes": 1567,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 6,
+        "chunk_id": "chk_f243fac8a027d27ff4bd24327b554db4c371d24cf8a4bc2be23f1e1bb311ca2d",
+        "distance": 0.2714453339576721,
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "title": "SQL Injection Prevention Cheat Sheet",
+        "evidence_bytes": 1616,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 7,
+        "chunk_id": "chk_e6cc33db637df1ae66c791f0eedf6a2f70c48d1349c7f26a46f29b5c6db75846",
+        "distance": 0.28479260206222534,
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "title": "SQL Injection Prevention Cheat Sheet",
+        "evidence_bytes": 1353,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 8,
+        "chunk_id": "chk_c3e5c54407905e06885d3fbd61912e50bd1043a60097dd7da98c77748de1d2e5",
+        "distance": 0.2982880473136902,
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "title": "SQL Injection Prevention Cheat Sheet",
+        "evidence_bytes": 1298,
+        "decision": "byte_budget"
+      }
+    ],
+    "selected": [
+      {
+        "source_id": "src_00ae77089dba1fe833004e564d85f42e3271328af26829b5e0d8e64cdc4e8fb9",
+        "chunk_id": "chk_34622baf6560c1d99bd637a3b189b6be36bcfeb2137297e816b27ed3764c2a5e"
+      }
+    ],
+    "empty_reason": null
+  },
+  {
+    "id": "object_authorization",
+    "expected_source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+    "candidates": [
+      {
+        "rank": 1,
+        "chunk_id": "chk_a9a8298bbf24ea349c1d8ce959c8df32f1f574e98b11c0f43d24f5f25ac4bad6",
+        "distance": 0.23932373523712158,
+        "source_id": "src_eeaab4b437cb77a555e2d52de812bacb01d707a7a835aa18185aefcc44efe37c",
+        "title": "Application Platform Configuration",
+        "evidence_bytes": 1410,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "chk_85c1626704a4ad94d5734f91e757238da650d2b6b2405a3648161712afafed5f",
+        "distance": 0.24145525693893433,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1453,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "chk_2a5a4b37f989cdfbfe64d0326d1aef6fe0bda0fe16b5462372930bc296870ec0",
+        "distance": 0.2536258101463318,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1550,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "chk_82862b5c2af4e93a4942e5856bcdbb5dd7dfa963b147a813d741977ca5d5cbb5",
+        "distance": 0.26135939359664917,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1418,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "chk_2e932928122c817593438f0950cbe4df8e6684742967f935946e0f82a95a6198",
+        "distance": 0.2629483938217163,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1611,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 6,
+        "chunk_id": "chk_41d942643a42938ca970ee13a300018a9cfb49c729b1102ab4c4d0e9b3fb1f36",
+        "distance": 0.26747727394104004,
+        "source_id": "src_eeaab4b437cb77a555e2d52de812bacb01d707a7a835aa18185aefcc44efe37c",
+        "title": "Application Platform Configuration",
+        "evidence_bytes": 1271,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 7,
+        "chunk_id": "chk_732fa139e7c260b6f254b0e836c1ce6fa4ddb971b9d1ed7c25e5dddd153482e1",
+        "distance": 0.26760900020599365,
+        "source_id": "src_3ec92aafee46f34e0e2aaab8fed409735c3b7ba90baee5eae96adebfde90b093",
+        "title": "Bypassing Authorization Schema",
+        "evidence_bytes": 1611,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 8,
+        "chunk_id": "chk_b2fe4f395879d8fb59871ea0b15aee2d6472d2984f90c094e94abd9ea9cebe91",
+        "distance": 0.2689197063446045,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1280,
+        "decision": "accepted"
+      }
+    ],
+    "selected": [
+      {
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "chunk_id": "chk_b2fe4f395879d8fb59871ea0b15aee2d6472d2984f90c094e94abd9ea9cebe91"
+      }
+    ],
+    "empty_reason": null
+  },
+  {
+    "id": "file_permissions",
+    "expected_source_id": "src_26921fde208fb75101da5ffcd55629e69fdce4697b0431d43cd0032193fc1aa3",
+    "candidates": [
+      {
+        "rank": 1,
+        "chunk_id": "chk_665903025991c80a73c3e66fc302f38acab17874d45bc00ad3a86a31251fbb64",
+        "distance": 0.24629497528076172,
+        "source_id": "src_26921fde208fb75101da5ffcd55629e69fdce4697b0431d43cd0032193fc1aa3",
+        "title": "File Permissions",
+        "evidence_bytes": 1097,
+        "decision": "accepted"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "chk_19b2dd4a6c714c24487c6cd1e1d57b62eb763261235ad522608f9084ef689cbb",
+        "distance": 0.2610970735549927,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1380,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "chk_bfba12a1f06ee91e30d7192f5be01269c888bf6ee434547ed1d937f74c8a6170",
+        "distance": 0.26323509216308594,
+        "source_id": "src_26921fde208fb75101da5ffcd55629e69fdce4697b0431d43cd0032193fc1aa3",
+        "title": "File Permissions",
+        "evidence_bytes": 1546,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "chk_85c1626704a4ad94d5734f91e757238da650d2b6b2405a3648161712afafed5f",
+        "distance": 0.2710613012313843,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1453,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "chk_10a6b73b0035470402bf0d8466f9844d69b7cd26b93a54fc8c91048276356733",
+        "distance": 0.2783181667327881,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1605,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 6,
+        "chunk_id": "chk_c8f6b46caa67e8dfd30d223d01b1bcaf5554ebf93afa351f2b38920a2d908491",
+        "distance": 0.2996402978897095,
+        "source_id": "src_26921fde208fb75101da5ffcd55629e69fdce4697b0431d43cd0032193fc1aa3",
+        "title": "File Permissions",
+        "evidence_bytes": 1451,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 7,
+        "chunk_id": "chk_25d06fb5321fc665cf82621f7bbf78f569b20274042d18becc3b38787b666a29",
+        "distance": 0.3011047840118408,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 923,
+        "decision": "accepted"
+      },
+      {
+        "rank": 8,
+        "chunk_id": "chk_667cf7dad8f5d9118d7ef53d85f69ff010510c192f63152ddfad44a4a28fbaf5",
+        "distance": 0.30208396911621094,
+        "source_id": "src_6ebf4436c7e8d7db0d880f9e92c20878a8352bda683eaf3ff3417aa195827c79",
+        "title": "Network Infrastructure Configuration",
+        "evidence_bytes": 1400,
+        "decision": "byte_budget"
+      }
+    ],
+    "selected": [
+      {
+        "source_id": "src_26921fde208fb75101da5ffcd55629e69fdce4697b0431d43cd0032193fc1aa3",
+        "chunk_id": "chk_665903025991c80a73c3e66fc302f38acab17874d45bc00ad3a86a31251fbb64"
+      },
+      {
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "chunk_id": "chk_25d06fb5321fc665cf82621f7bbf78f569b20274042d18becc3b38787b666a29"
+      }
+    ],
+    "empty_reason": null
+  },
+  {
+    "id": "dependency_disclosure",
+    "expected_source_id": "src_0d4e3593f93b84224de45c1c76578c7b446965f180213449db1cb467686f7d5a",
+    "candidates": [
+      {
+        "rank": 1,
+        "chunk_id": "chk_f962aae4629bba086c614ab2bbc5b6238fa4d51caf251cb15bd707916ed7b04c",
+        "distance": 0.22980809211730957,
+        "source_id": "src_0d4e3593f93b84224de45c1c76578c7b446965f180213449db1cb467686f7d5a",
+        "title": "Vulnerable Dependency Management Cheat Sheet",
+        "evidence_bytes": 1507,
+        "decision": "accepted"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "chk_0aa903bc2be40c952dead1c7e93480e4019186c36c6c3b5457537c551c49ae32",
+        "distance": 0.23456066846847534,
+        "source_id": "src_0d4e3593f93b84224de45c1c76578c7b446965f180213449db1cb467686f7d5a",
+        "title": "Vulnerable Dependency Management Cheat Sheet",
+        "evidence_bytes": 1073,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "chk_196aaa3668464d72592f2652cac753d468df149b195f3a14b5af875d2c19f0ce",
+        "distance": 0.24880224466323853,
+        "source_id": "src_458dbb654bd2e839ec846d244ea3a7223af3a96dd4f747df4d6a6ff710c2ec15",
+        "title": "Vulnerability Disclosure Cheat Sheet",
+        "evidence_bytes": 1459,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "chk_19b2dd4a6c714c24487c6cd1e1d57b62eb763261235ad522608f9084ef689cbb",
+        "distance": 0.2511911392211914,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1380,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "chk_a18ff5ef09dd44a1b3cb257a08d5013f817ebf6e649e10f64e352746cd3a6ac3",
+        "distance": 0.25460606813430786,
+        "source_id": "src_0d4e3593f93b84224de45c1c76578c7b446965f180213449db1cb467686f7d5a",
+        "title": "Vulnerable Dependency Management Cheat Sheet",
+        "evidence_bytes": 1191,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 6,
+        "chunk_id": "chk_c2badf09da3abed3c2846acb43d138bae89141b95cd35659a85a4dfd0f637f92",
+        "distance": 0.2627568244934082,
+        "source_id": "src_0d4e3593f93b84224de45c1c76578c7b446965f180213449db1cb467686f7d5a",
+        "title": "Vulnerable Dependency Management Cheat Sheet",
+        "evidence_bytes": 1607,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 7,
+        "chunk_id": "chk_433c685f365826ddb67085032606447b0e0d44dfa3123bc37982eff46ac92044",
+        "distance": 0.2662525773048401,
+        "source_id": "src_0d4e3593f93b84224de45c1c76578c7b446965f180213449db1cb467686f7d5a",
+        "title": "Vulnerable Dependency Management Cheat Sheet",
+        "evidence_bytes": 1339,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 8,
+        "chunk_id": "chk_9513380b7186b7ac09bd130244e7637a0928bf2b371491abedf9386ba5b24bfe",
+        "distance": 0.268174409866333,
+        "source_id": "src_458dbb654bd2e839ec846d244ea3a7223af3a96dd4f747df4d6a6ff710c2ec15",
+        "title": "Vulnerability Disclosure Cheat Sheet",
+        "evidence_bytes": 1519,
+        "decision": "byte_budget"
+      }
+    ],
+    "selected": [
+      {
+        "source_id": "src_0d4e3593f93b84224de45c1c76578c7b446965f180213449db1cb467686f7d5a",
+        "chunk_id": "chk_f962aae4629bba086c614ab2bbc5b6238fa4d51caf251cb15bd707916ed7b04c"
+      }
+    ],
+    "empty_reason": null
+  },
+  {
+    "id": "network_zones",
+    "expected_source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+    "candidates": [
+      {
+        "rank": 1,
+        "chunk_id": "chk_d5d42763a2a25a106636f47119224285e1fa3001ee71bb5800814185512c0b1e",
+        "distance": 0.3175102472305298,
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "title": "Network segmentation Cheat Sheet",
+        "evidence_bytes": 1444,
+        "decision": "accepted"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "chk_6b0a968d52438f9d319bdaa19c8f63d5123bd63752136d678aa8d0a9be5c5ef9",
+        "distance": 0.3195870518684387,
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "title": "Network segmentation Cheat Sheet",
+        "evidence_bytes": 1619,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "chk_7fa42ce90bfcd6029eebe36f969977bdcfaf080ef70cbdd6742bda7f4d5afa54",
+        "distance": 0.3264055848121643,
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "title": "Network segmentation Cheat Sheet",
+        "evidence_bytes": 503,
+        "decision": "accepted"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "chk_c0f411293e249b9974327a8fe2a868bbd24fbe62c4ef8e043a3f62f0d89ce44c",
+        "distance": 0.3287968039512634,
+        "source_id": "src_e323caa4b788d969cfa80c1642c496ccb9118aa71452c641f861bf41bbe0c290",
+        "title": "MITRE ATT&CK ICS \u2014 bounded defensive subset",
+        "evidence_bytes": 1609,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "chk_7dba146cde9c1b4225898960947aaa4d381b707aa9fae4f8db010313217a6c25",
+        "distance": 0.3335150480270386,
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "title": "Network segmentation Cheat Sheet",
+        "evidence_bytes": 1166,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 6,
+        "chunk_id": "chk_41fd52304bbebc4f6ad38f011a7b2bcb8c9d2f5eb560619dcd90713a4050a477",
+        "distance": 0.3342742323875427,
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "title": "Network segmentation Cheat Sheet",
+        "evidence_bytes": 1525,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 7,
+        "chunk_id": "chk_bdbf523d17bed6fd76ba188d1cdc045a10182816b1c10aa655e374b27c3b299b",
+        "distance": 0.3371560573577881,
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "title": "Network segmentation Cheat Sheet",
+        "evidence_bytes": 1508,
+        "decision": "byte_budget"
+      },
+      {
+        "rank": 8,
+        "chunk_id": "chk_452f9f3558de0ecea47ccd1486c1f5a722518733e199173d48c24133a395e46f",
+        "distance": 0.34422171115875244,
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "title": "Network segmentation Cheat Sheet",
+        "evidence_bytes": 1622,
+        "decision": "byte_budget"
+      }
+    ],
+    "selected": [
+      {
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "chunk_id": "chk_d5d42763a2a25a106636f47119224285e1fa3001ee71bb5800814185512c0b1e"
+      },
+      {
+        "source_id": "src_f8f1d84068f7b32c650717008fcb122e494fa2a5cd9e657deb94743a1c7eb5f2",
+        "chunk_id": "chk_7fa42ce90bfcd6029eebe36f969977bdcfaf080ef70cbdd6742bda7f4d5afa54"
+      }
+    ],
+    "empty_reason": null
+  },
+  {
+    "id": "bola_acceptance",
+    "expected_source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+    "candidates": [
+      {
+        "rank": 1,
+        "chunk_id": "chk_5fd429ca6a4e1e1ffd95a1bae51df6dab5788c6453ed3c60f6b009522e8037d8",
+        "distance": 0.22299039363861084,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1615,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "chk_25e9ace2ac7be966e093530d787bdb09b4296dc693f34915d59638ff87977213",
+        "distance": 0.2315819263458252,
+        "source_id": "src_3ec92aafee46f34e0e2aaab8fed409735c3b7ba90baee5eae96adebfde90b093",
+        "title": "Bypassing Authorization Schema",
+        "evidence_bytes": 1485,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "chk_85c1626704a4ad94d5734f91e757238da650d2b6b2405a3648161712afafed5f",
+        "distance": 0.24487847089767456,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1453,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "chk_10a6b73b0035470402bf0d8466f9844d69b7cd26b93a54fc8c91048276356733",
+        "distance": 0.24915260076522827,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1605,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "chk_ee870cbbf92edfbee14f52371081e132e508f27a0acef56394a3f78dd9e541c9",
+        "distance": 0.2580721378326416,
+        "source_id": "src_404798870617fc091884d3090e10ea3ba0dd719897d736a794aa84b298c8df3d",
+        "title": "Logging Cheat Sheet",
+        "evidence_bytes": 1604,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 6,
+        "chunk_id": "chk_135e64e3fa09409e3ab3101feeb880b20a5c51f8e9a1df5395a4c7c080a72e25",
+        "distance": 0.26318299770355225,
+        "source_id": "src_0db22c4c98134f4f4c33015ec559215e24ad7614c13960783a5a13d98d7a82e9",
+        "title": "Authorization Cheat Sheet",
+        "evidence_bytes": 1303,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 7,
+        "chunk_id": "chk_1083f382b0848dbc74a3ab6840f712641a566d5edb9a07d8f092b3840ebb4e45",
+        "distance": 0.26523375511169434,
+        "source_id": "src_1c8410bfb259904497bf88de1bacde87d2566bb6a0cfe02c514a612cd3fc8a79",
+        "title": "Input Validation Cheat Sheet",
+        "evidence_bytes": 1527,
+        "decision": "topic_mismatch"
+      },
+      {
+        "rank": 8,
+        "chunk_id": "chk_665903025991c80a73c3e66fc302f38acab17874d45bc00ad3a86a31251fbb64",
+        "distance": 0.27350735664367676,
+        "source_id": "src_26921fde208fb75101da5ffcd55629e69fdce4697b0431d43cd0032193fc1aa3",
+        "title": "File Permissions",
+        "evidence_bytes": 1097,
+        "decision": "topic_mismatch"
+      }
+    ],
+    "selected": [],
+    "empty_reason": "no_relevant_evidence"
+  }
+]

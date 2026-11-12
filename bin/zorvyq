@@ -1,0 +1,13 @@
+#!/bin/sh
+# Resolve the checkout without requiring a shell-activated environment.
+ZORVYQ_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd) || exit 1
+if [ ! -x "$ZORVYQ_ROOT/.venv/bin/python" ]; then
+    if [ -x /usr/bin/zenity ]; then
+        /usr/bin/zenity --error --title=ZORVYQ --text="ZORVYQ cannot find its project Python environment at $ZORVYQ_ROOT/.venv/bin/python. Review docs/ZORVYQ_STARTUP_MIGRATION.md."
+    else
+        printf '%s\n' 'ZORVYQ project Python environment unavailable.' >&2
+    fi
+    exit 1
+fi
+cd "$ZORVYQ_ROOT" || exit 1
+exec "$ZORVYQ_ROOT/.venv/bin/python" -B -m zorvyq "$@"

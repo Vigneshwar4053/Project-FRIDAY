@@ -27,7 +27,7 @@ class WorkloadDecision:
             raise ValueError('Invalid structured workload decision.')
 
 
-def classify(message, *, deterministic=False, explanation=False, assistant_name='FRIDAY', user_name='Vigneshwar'):
+def classify(message, *, deterministic=False, explanation=False, assistant_name='ZORVYQ', user_name='Vigneshwar'):
     if type(message) is not str:
         raise ValueError('A workload request must be text.')
     if deterministic:
@@ -39,6 +39,8 @@ def classify(message, *, deterministic=False, explanation=False, assistant_name=
     text = ' '.join(message.casefold().strip().rstrip('.!?').split())
     name = assistant_name.casefold()
     greetings = {'hello', 'hi', 'good morning', 'hello ' + name, 'hi ' + name}
+    # Preserve explicit legacy invocations throughout the public package migration.
+    greetings.update({'hello friday', 'hi friday', 'hello zorvyq', 'hi zorvyq'})
     if text in greetings:
         return WorkloadDecision(WorkloadLevel.MINIMAL, 'exact_greeting', 'minimal', False, f'Hello, {user_name}!')
     if text in {'thanks', 'thank you'}:

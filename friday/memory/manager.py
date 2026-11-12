@@ -19,7 +19,10 @@ def _validate_message(role: str, content: str) -> None:
 
 
 class MemoryManager:
-    def __init__(self, database_path: str | Path):
+    def __init__(self, database_path: str | Path, *, recent_limit=3):
+        if type(recent_limit) is not int or not 3 <= recent_limit <= 10:
+            raise ValueError('Recent history limit must be between 3 and 10.')
+        self.recent_limit = recent_limit
         self._database = Database(database_path)
 
     def __enter__(self) -> 'MemoryManager':
@@ -156,12 +159,16 @@ class MemoryManager:
         return tuple(dict(row) for row in rows)
 
     def record_recent_work(self, activity, *, launched_at=None,equivalent_ids=(),duplicate_groups=()):
-        """Atomically upsert and trim runtime-verified accepted launches to three."""
+        """Atomically upsert accepted launches, retaining an opted-in desktop history."""
         from uuid import uuid4
         if activity['launch_status'] not in {'launch_accepted', 'launch_outcome_unverified','navigation_confirmed'}:
             raise ValueError('Invalid recent-work launch outcome.')
         stamp = launched_at or _now()
         with self._database.transaction() as db:
+            # A legacy three-row menu must not erase the larger history already
+            # created by the desktop. Its display limit remains unchanged.
+            stored_count = db.execute('SELECT COUNT(*) FROM recent_work').fetchone()[0]
+            retention = min(10, max(self.recent_limit, stored_count))
             # Normalize existing alias duplicates BEFORE trimming, so a duplicate
             # cannot evict the third distinct activity. Archive original rows.
             for group in duplicate_groups:
@@ -201,9 +208,9 @@ class MemoryManager:
                         activity['summary'], activity['resume_descriptor'], stamp,
                         activity['safe_link'], order, activity['launch_status']))
             db.execute('DELETE FROM recent_work WHERE entry_id NOT IN '
-                       '(SELECT entry_id FROM recent_work ORDER BY launch_order DESC LIMIT 3)')
+                       '(SELECT entry_id FROM recent_work ORDER BY launch_order DESC LIMIT ?)', (retention,))
 
     def recent_work(self):
         with self._database.transaction() as db:
-            rows = db.execute('SELECT * FROM recent_work ORDER BY launch_order DESC LIMIT 3').fetchall()
+            rows = db.execute('SELECT * FROM recent_work ORDER BY launch_order DESC LIMIT ?', (self.recent_limit,)).fetchall()
         return tuple(dict(row) for row in rows)

@@ -1,4 +1,4 @@
-"""Central configuration and identity for FRIDAY."""
+"""Central configuration and identity for ZORVYQ."""
 from dataclasses import dataclass, field
 from pathlib import Path
 from friday.models.profile import InferenceProfile, deep_profile, standard_profile
@@ -12,7 +12,7 @@ class Settings:
     filesystem_max_directory_entries: int = 100
     filesystem_permission_store_path: Path | None = None
     desktop_duplicate_window_seconds: float = 20
-    assistant_name: str = "FRIDAY"
+    assistant_name: str = "ZORVYQ"
     user_name: str = "Vigneshwar"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:4b"

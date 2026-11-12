@@ -20,7 +20,7 @@ APPROVED_TOOLS = frozenset({'list_directory', 'read_file', 'file_info',
     'system_info', 'memory_info', 'cpu_info', 'disk_usage', 'process_status'})
 PATH_TOOLS = frozenset({'list_directory', 'read_file', 'file_info', 'disk_usage'})
 INSTRUCTION = (
-    'You are FRIDAY intent translator. Return exactly one JSON object, no reasoning. '
+    'You are ZORVYQ intent translator. Return exactly one JSON object, no reasoning. '
     'Schemas: {"kind":"tool","tool_name":NAME,"arguments":OBJECT}, '
     '{"kind":"chat","response":TEXT}, {"kind":"clarification","question":TEXT}, '
     '{"kind":"unsupported","reason":TEXT}. Use only supplied tools. '

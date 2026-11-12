@@ -76,7 +76,7 @@ class DesktopIntentResolver:
             return 'browser_history',{'direction':text.split()[1]}
         if text=='show browser status': return 'browser_status',{}
         if text=='list browser contents': return 'browser_contents',{}
-        if text=='open friday browser':
+        if text in {'open friday browser', 'open zorvyq browser'}:
             return 'navigate_browser',{'folder_id':'home'}
         if text in {'open files','open file manager'}: return 'open_folder',{'folder_id':'home'}
         if text in {'open github.com in firefox', 'open https://github.com/ in firefox'}:
@@ -85,11 +85,11 @@ class DesktopIntentResolver:
         if text=="resume yesterday's project": return 'resume_project',{}
         match=re.fullmatch(r"resume yesterday's ([a-z0-9_]+) project",text)
         if match: return 'resume_project',{'project_id':match[1]}
-        if text=='open my friday project': return 'open_project',{'project_id':'friday'}
-        match=re.fullmatch(r'open my ([a-z][a-z0-9_]{0,31}) project folder( in (?:ubuntu files|friday browser))?',text)
-        if match: return ('navigate_browser' if match[2]==' in friday browser' else 'open_folder'),{'folder_id':'project_'+match[1]}
-        match=re.fullmatch(r'(?:open|resume) (?:my |the )?(downloads|documents|home)(?: folder)?( in (?:ubuntu files|friday browser))?',text)
-        if match: return ('navigate_browser' if match[2]==' in friday browser' else 'open_folder'),{'folder_id':match[1]}
+        if text in {'open my friday project', 'open my zorvyq project'}: return 'open_project',{'project_id':'friday'}
+        match=re.fullmatch(r'open my ([a-z][a-z0-9_]{0,31}) project folder( in (?:ubuntu files|(?:friday|zorvyq) browser))?',text)
+        if match: return ('navigate_browser' if match[2] in {' in friday browser',' in zorvyq browser'} else 'open_folder'),{'folder_id':'project_'+('friday' if match[1]=='zorvyq' else match[1])}
+        match=re.fullmatch(r'(?:open|resume) (?:my |the )?(downloads|documents|home)(?: folder)?( in (?:ubuntu files|(?:friday|zorvyq) browser))?',text)
+        if match: return ('navigate_browser' if match[2] in {' in friday browser',' in zorvyq browser'} else 'open_folder'),{'folder_id':match[1]}
         match=re.fullmatch(r'(open|launch|start) (.+)',text)
         if match:
             identity=self.applications.resolve(match[2])

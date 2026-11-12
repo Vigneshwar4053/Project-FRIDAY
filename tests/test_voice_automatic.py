@@ -354,7 +354,7 @@ class AutomaticCLITests(unittest.TestCase):
 
     def test_greeting_printed_and_spoken_once(self):
         output,speech,model,_=self.run_cli(['hello','quit'])
-        self.assertIn('FRIDAY: Hello,',output)
+        self.assertIn('ZORVYQ: Hello,',output)
         self.assertEqual(len(speech.calls),1)
         model.chat.assert_not_called()
 
@@ -363,7 +363,7 @@ class AutomaticCLITests(unittest.TestCase):
         # Also verify print(flush=True), not just ordering in StringIO.
         with patch('builtins.print', wraps=print) as printed:
             speech.on_speak=lambda text: self.assertTrue(any(
-                'FRIDAY: Public answer' in str(call.args) and call.kwargs.get('flush')
+                'ZORVYQ: Public answer' in str(call.args) and call.kwargs.get('flush')
                 for call in printed.call_args_list))
             output,speech,model,_=self.run_cli(['what is Python?','quit'],speech=speech)
         self.assertIn('Public answer',output)
@@ -404,7 +404,7 @@ class AutomaticCLITests(unittest.TestCase):
 
     def test_failure_keeps_text_and_cli(self):
         output,speech,_,_=self.run_cli(['hello','/q','quit'],speech=FakeSpeech(failure=SpeechError('Offline speech output timed out.')))
-        self.assertIn('FRIDAY: Hello,',output)
+        self.assertIn('ZORVYQ: Hello,',output)
         self.assertIn('timed out',output)
         self.assertIn('Automatic speech disabled.',output)
         self.assertEqual(speech.stops,1)
@@ -418,7 +418,7 @@ class AutomaticCLITests(unittest.TestCase):
         output,speech,_,_=self.run_cli(['hello','quit'],speech=FakeSpeech(unavailable=True))
         self.assertIn('Speech Output: OFF',output)
         self.assertIn('Text mode remains available',output)
-        self.assertIn('FRIDAY: Hello,',output)
+        self.assertIn('ZORVYQ: Hello,',output)
         self.assertEqual(speech.calls,[])
 
     def test_diagnostics_never_spoken(self):
@@ -436,7 +436,7 @@ class AutomaticCLITests(unittest.TestCase):
 
     def test_unknown_restored_context_remains_text_only(self):
         output,speech,model,_=self.run_cli(['what is Python?','quit'],seed=True)
-        self.assertIn('FRIDAY: Public answer',output)
+        self.assertIn('ZORVYQ: Public answer',output)
         self.assertEqual(speech.calls,[])
         self.assertEqual(model.chat.call_count,1)
 
@@ -456,7 +456,7 @@ class AutomaticCLITests(unittest.TestCase):
     def test_confirmed_voice_public_reply_speech_and_privacy(self):
         voice=Mock();voice.transcribe.return_value='what is Python?'
         output,speech,model,messages=self.run_cli(['/voice','','y','quit'],voice=voice)
-        self.assertIn('FRIDAY: Public answer',output)
+        self.assertIn('ZORVYQ: Public answer',output)
         self.assertEqual(speech.calls,['Public answer'])
         self.assertEqual(messages,[])
         self.assertEqual(model.chat.call_count,1)
@@ -464,7 +464,7 @@ class AutomaticCLITests(unittest.TestCase):
     def test_confirmed_voice_toggle_off_still_dispatches(self):
         voice=Mock();voice.transcribe.return_value='what is Python?'
         output,speech,model,messages=self.run_cli(['/q','/voice','','y','quit'],voice=voice)
-        self.assertIn('FRIDAY: Public answer',output)
+        self.assertIn('ZORVYQ: Public answer',output)
         self.assertEqual(speech.calls,[])
         self.assertEqual(messages,[])
         self.assertEqual(model.chat.call_count,1)
@@ -479,6 +479,6 @@ class AutomaticCLITests(unittest.TestCase):
 
     def test_unknown_private_conversation_remains_visible_silent(self):
         output,speech,model,_=self.run_cli(['Analyze this private finding: FIXTURE_DETAIL','quit'])
-        self.assertIn('FRIDAY: Public answer',output)
+        self.assertIn('ZORVYQ: Public answer',output)
         self.assertEqual(speech.calls,[])
         self.assertEqual(model.chat.call_count,1)

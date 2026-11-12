@@ -37,3 +37,11 @@ logs/*
 ggml-*.bin
 whisper-cli
 /voice-artifacts/
+
+# Isolated upstream checkout, release binaries and archives (see manifest).
+/third_party/activitywatch/
+/third_party/activitywatch-runtime/
+/third_party/*.zip
+
+/third_party/awatcher/
+/third_party/awatcher-runtime/

@@ -3,6 +3,7 @@ import re
 import resource
 import sys
 from collections import deque
+from threading import RLock
 from time import perf_counter_ns, process_time_ns
 from friday.config.settings import settings, Settings
 from friday.core.context import select_context
@@ -28,7 +29,7 @@ class FridayAssistant:
                  memory: MemoryManager | None = None, recent_memory_limit: int = 20,
                  tool_router: ToolRouter | None = None, tool_manager: ToolManager | None = None,
                  tool_presenter: ToolPresenter | None = None,
-                 workload_configuration: Settings | None = None):
+                 workload_configuration: Settings | None = None, knowledge=None):
         if not isinstance(recent_memory_limit, int) or recent_memory_limit < 0:
             raise ValueError("The recent memory limit must be a nonnegative integer.")
         # Accept the existing provider constructor while routing every request
@@ -46,6 +47,8 @@ class FridayAssistant:
             raise ValueError('Workload configuration must be validated settings.')
         self.adaptive_workloads = self.workload_configuration.adaptive_workloads
         self.last_performance = None
+        self.knowledge = knowledge
+        self._response_lock = RLock()
         self._measurement = None
         self.last_response_metadata = ResponseMetadata()  # Never retains response text.
         self._speech_public_history = deque(maxlen=40)  # Session-only public fingerprints.
@@ -203,10 +206,25 @@ class FridayAssistant:
             self._measurement['classification_ns'] += max(0, perf_counter_ns() - started)
 
     def respond(self, user_message: str, *, persist: bool = True) -> str:
+        with self._response_lock:
+            return self._respond_locked(user_message, persist=persist)
+
+    def _respond_locked(self, user_message: str, *, persist: bool = True) -> str:
         """A private turn neither saves nor enters reusable conversation history."""
         if type(persist) is not bool:
             raise ValueError('Persistence must be a boolean.')
         self.last_response_metadata = ResponseMetadata()
+        from friday.intelligence.rag import explicit_question
+        question = explicit_question(user_message)
+        if question is not None:
+            self.last_performance = None
+            self.last_response_metadata = ResponseMetadata(ResponseCategory.PRIVATE, ResponseProvenance.PRIVATE_CONTEXT)
+            self.file_context.clear()
+            if not question:
+                return 'Approved knowledge: a nonempty question is required.'
+            if self.knowledge is None:
+                return 'Approved knowledge retrieval is unavailable; no general-model answer was generated.'
+            return self.knowledge.answer(question)
         try:
             return self._respond_measured(user_message, persist=persist)
         except BaseException:

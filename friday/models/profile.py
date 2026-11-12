@@ -12,9 +12,11 @@ class InferenceProfile:
     max_context_bytes: int = 24576
     max_history_messages: int = 12
     think: bool = False
+    require_complete: bool = False
+    json_output: bool = False
 
     def __post_init__(self):
-        if type(self.think) is not bool:
+        if any(type(value) is not bool for value in (self.think, self.require_complete, self.json_output)):
             raise ValueError("Thinking control must be boolean.")
         integers = ((self.num_predict, 32, 2048), (self.num_ctx, 1024, 16384),
                     (self.max_context_bytes, 2048, 131072), (self.max_history_messages, 0, 40))

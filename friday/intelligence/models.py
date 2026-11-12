@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from urllib.parse import urlsplit
+from friday.diagnostics import safe_category
 
 MAX_DOCUMENT_BYTES = 1024 * 1024
 MAX_ACTIVE_CHUNKS = 10_000
@@ -16,6 +17,10 @@ TOPICS = frozenset({'networking','network_scanning','nmap','web_security','ethic
 
 class KnowledgeError(RuntimeError):
     """Only fixed diagnostics cross the application boundary."""
+
+    def __init__(self, message, *, category='retrieval_failure'):
+        super().__init__(message)
+        self.category = safe_category(category, 'retrieval_failure')
 
 
 class TrustClassification(StrEnum):
@@ -158,8 +163,12 @@ class EvidenceBundle:
     persist: bool = field(default=False,init=False)
     speech_eligible: bool = field(default=False,init=False)
 
-    def serialize(self):
-        return json.dumps([e.payload() for e in self.evidence],ensure_ascii=False,separators=(',',':'))
+    def serialize(self, *, compact=False):
+        # The model needs only citation handles and whole untrusted passages.
+        # Full provenance remains in the immutable evidence map and renderer.
+        payload = ([{'citation': e.citation_id, 'title': e.source.title, 'text': e.chunk.text}
+                    for e in self.evidence] if compact else [e.payload() for e in self.evidence])
+        return json.dumps(payload,ensure_ascii=False,separators=(',',':'))
 
     def citation(self,label):
         for evidence in self.evidence:

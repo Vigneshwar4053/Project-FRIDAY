@@ -27,30 +27,46 @@ class EspeakNGBackend:
     def __init__(self, binary=Path('/usr/bin/espeak-ng'), *, timeout=60):
         self.binary = Path(binary)
         self.timeout = timeout
+        self._child = None
+        from threading import Event
+        self.cancelled = Event()
 
     def verify(self):
         if not self.binary.is_absolute() or not self.binary.is_file() or not os.access(self.binary, os.X_OK):
             raise SpeechError('eSpeak NG is unavailable. Install/provision espeak-ng only with owner approval; text mode remains available.')
 
     def stop(self):
-        # Playback is synchronous; speak() always reaps its child in finally.
-        pass
+        self.cancelled.set()
+        child = self._child
+        if child is not None and child.poll() is None:
+            import signal
+            try:
+                os.killpg(child.pid, signal.SIGINT)
+            except ProcessLookupError:
+                pass
 
     def speak(self, text):
         if (not isinstance(text, str) or not text.strip() or len(text.encode('utf-8')) > MAX_SPEECH_BYTES
                 or any(ord(c) < 32 or ord(c) == 127 for c in text)):
             raise SpeechError('Speech text must be nonempty, at most 8192 UTF-8 bytes, and contain no control characters.')
         child = None
+        self.cancelled.clear()
         try:
             self.verify()
             # Text stays out of argv/process listings and is never parsed as flags
             # or SSML (-m is deliberately absent). No shell or file input.
-            child = subprocess.Popen([str(self.binary), '--stdin', '-b', '1', '-v', 'en', '-s', '175'],
+            child = subprocess.Popen([str(self.binary), '--stdin', '-b', '1', '-v', getattr(self, 'voice', 'en'), '-s', str(getattr(self, 'speed', 175)),
+                '-a', str(getattr(self, 'volume', 100))],
                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                 start_new_session=True)
+            self._child = child
+            if self.cancelled.is_set():
+                self.stop()
             _, stderr = child.communicate(input=text.encode('utf-8'), timeout=self.timeout)
             # Some eSpeak audio failures print diagnostics with exit status zero.
             # Conservatively treat any diagnostics as unverified output failure.
+            if self.cancelled.is_set():
+                return
             if child.returncode != 0 or stderr:
                 raise SpeechError('Offline speech output failed or the audio device reported an error; check the local output device.')
         except subprocess.TimeoutExpired:
@@ -60,6 +76,7 @@ class EspeakNGBackend:
         finally:
             if child is not None:
                 stop_process(child)
+            self._child = None
 
 
 def speak_turn(text, backend=None, *, write=print):

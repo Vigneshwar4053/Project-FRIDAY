@@ -24,7 +24,7 @@ from friday.voice.tts import SpeechController
 from friday.voice.backend import ProcessCleanupError
 
 
-def create_tool_runtime(configuration, *, filesystem_approval=None, memory=None):
+def create_tool_runtime(configuration, *, filesystem_approval=None, memory=None, owner_authentication=None):
     """Production composition, with explicit project roots and isolated registries."""
     permission_path = Path(configuration.filesystem_permission_store_path or
                            configuration.project_root / 'data' / 'permissions' / 'grants.json').expanduser()
@@ -48,7 +48,8 @@ def create_tool_runtime(configuration, *, filesystem_approval=None, memory=None)
     from friday.desktop.runtime import DesktopPermissionAdapter, register_desktop_tools
     from friday.desktop.routing import DesktopIntentResolver
     from friday.security.owner import OwnerAuthenticator
-    owner_auth = OwnerAuthenticator(configuration.project_root / '.env')
+    owner_auth = (OwnerAuthenticator(configuration.project_root / '.env')
+                  if owner_authentication is None else owner_authentication)
     desktop = DesktopPermissionAdapter(project_root=configuration.project_root, sensitive=sensitive,
                                        approval=filesystem_approval, memory=memory,
                                        owner_auth=owner_auth,
@@ -65,7 +66,7 @@ def create_tool_runtime(configuration, *, filesystem_approval=None, memory=None)
     return (manager, ToolRouter(configuration.project_root, desktop_resolver=DesktopIntentResolver(desktop.applications, desktop.recent,desktop.browser,desktop.discovery)))
 
 
-def main(*, adaptive=None, diagnostics=None, voice_backend=None, voice_notice=None, speech_backend=None) -> None:
+def main(*, adaptive=None, diagnostics=None, rag_diagnostics=False, voice_backend=None, voice_notice=None, speech_backend=None) -> None:
     try:
         configuration = replace(settings,
             adaptive_workloads=settings.adaptive_workloads if adaptive is None else adaptive,
@@ -106,6 +107,8 @@ def main(*, adaptive=None, diagnostics=None, voice_backend=None, voice_notice=No
                     tool_manager=tool_manager, tool_router=tool_router,
                     workload_configuration=configuration,
                 )
+                from friday.intelligence.rag import live_orchestrator
+                friday.knowledge = live_orchestrator(model_manager, configuration, diagnostics=rag_diagnostics)
                 try:
                     from friday.voice.startup import StartupGreeting
                     interactive = sys.stdin.isatty() and sys.stdout.isatty()
@@ -200,7 +203,8 @@ def main(*, adaptive=None, diagnostics=None, voice_backend=None, voice_notice=No
 
 def cli_main(argv=None):
     import argparse
-    parser = argparse.ArgumentParser(description='FRIDAY local assistant')
+    parser = argparse.ArgumentParser(description='ZORVYQ local assistant (developer CLI)')
+    parser.add_argument('--rag-diagnostics', action='store_true', help='Print content-free explicit-RAG status in the local owner terminal')
     parser.add_argument('--adaptive', action='store_true', default=None, help='Enable Phase 6D workloads')
     parser.add_argument('--diagnostics', action='store_true', default=None, help='Print redacted session metrics (enables adaptive mode)')
     parser.add_argument('--voice-binary', type=Path, help='Optional local whisper-cli executable')
@@ -228,7 +232,7 @@ def cli_main(argv=None):
         if args.check_voice_config:
             print(json.dumps({'status': 'invalid', 'microphone': 'OFF', 'message': notice}))
             return 1
-    main(adaptive=True if args.diagnostics else args.adaptive, diagnostics=args.diagnostics,
+    main(adaptive=True if args.diagnostics else args.adaptive, diagnostics=args.diagnostics, rag_diagnostics=args.rag_diagnostics,
          voice_backend=voice_backend, voice_notice=notice)
     return 0
 

@@ -30,7 +30,7 @@ class LocationResolutionError(ValueError):
 def command_text(message):
     text = message.strip()
     # Optional assistant invocation, useful for transcribed voice input.
-    text = re.sub(r'^friday\s*[,，:]\s*', '', text, flags=re.I)
+    text = re.sub(r'^(?:zorvyq|friday)\s*[,，:]\s*', '', text, flags=re.I)
     return text
 
 
@@ -61,9 +61,9 @@ def browsing_guard(message):
     if re.match(r'^(?:go\s+back\b|back\Z|return\s+to\s+(?:the\s+)?previous\b|enter\s+that\s+folder\b)', action):
         return 'That navigation form is not supported; name a visible child or use go back/go home.'
     if re.match(r'^launch\b', action) or re.match(r'^play\s+(?:a\s+|my\s+|the\s+)?(?:video|movie|music|song|audio)\b', action):
-        return 'Application launching and playback are not supported; folders can be listed in FRIDAY.'
+        return 'Application launching and playback are not supported; folders can be listed in ZORVYQ.'
     if re.match(r'^(?:open|show|browse|display|take\s+me\s+to)\b', action) and not has_explicit_path(text) and re.search(r'\b(?:application|app|viewer|player)\b', text):
-        return 'Application launching is not supported; folders can be listed in FRIDAY.'
+        return 'Application launching is not supported; folders can be listed in ZORVYQ.'
     return None
 
 

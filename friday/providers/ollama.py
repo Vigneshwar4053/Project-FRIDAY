@@ -84,20 +84,26 @@ class OllamaProvider(ModelProvider):
         self.last_generation_metrics = None
         payload = {"model": self.model, "messages": messages,
                    "stream": False, "think": self.think}
+        if getattr(self, 'keep_alive', None) == 0:
+            payload['keep_alive'] = 0
         if self._profile is not None:
             payload["options"] = self._profile.options
             payload["think"] = self._profile.think
+            if self._profile.json_output:
+                payload["format"] = "json"
         if self._intent_mode:
             options = ({**self._profile.options, 'temperature': 0}
                        if self._profile is not None else {'num_predict': 512})
             payload.update(format='json', think=False, options=options)
+        if getattr(self, 'supports_thinking_control', True) is False:
+            payload.pop('think', None)
         request = urllib.request.Request(
             f"{self.base_url}/api/chat",
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"}, method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=(self._profile.timeout_seconds if self._profile is not None else self.timeout)) as response:
+            with getattr(self, '_open_request', urllib.request.urlopen)(request, timeout=(self._profile.timeout_seconds if self._profile is not None else self.timeout)) as response:
                 limit = 65536 if self._intent_mode else 262144 if self._profile is not None else None
                 body = response.read(limit + 1) if limit is not None else response.read()
                 if self._intent_mode and len(body) > 65536:
@@ -111,20 +117,21 @@ class OllamaProvider(ModelProvider):
                 message = f"Ollama model {self.model!r} or chat endpoint was not found. Check the model with ollama list."
             else:
                 message = f"Ollama returned HTTP {exc.code}. Check the service and model configuration."
-            raise ProviderError(message) from exc
+            raise ProviderError(message, category='model_unavailable' if exc.code == 404 else 'provider_failure') from exc
         except (TimeoutError, socket.timeout) as exc:
-            raise ProviderError("Ollama timed out. CPU generation can be slow; try again.") from exc
+            raise ProviderError("Ollama timed out. CPU generation can be slow; try again.", category="generation_timeout") from exc
         except urllib.error.URLError as exc:
             raise ProviderError(
-                f"Could not reach Ollama at {self.base_url}. Check that ollama serve is running."
+                f"Could not reach Ollama at {self.base_url}. Check that ollama serve is running.",
+                category="generation_timeout" if isinstance(exc.reason, (TimeoutError, socket.timeout)) else "connection_failure"
             ) from exc
         except OSError as exc:
-            raise ProviderError("Ollama connection failed while reading the response.") from exc
+            raise ProviderError("Ollama connection failed while reading the response.", category="connection_failure") from exc
         except (ValueError, UnicodeError) as exc:
-            raise ProviderError("Ollama returned an invalid JSON response.") from exc
+            raise ProviderError("Ollama returned an invalid JSON response.", category="malformed_json") from exc
 
         if not isinstance(result, dict):
-            raise ProviderError("Ollama returned an invalid chat response.")
+            raise ProviderError("Ollama returned an invalid chat response.", category="invalid_response")
         if "error" in result:
             raise ProviderError("Ollama reported a generation error. Check its service logs.")
         # A token-limit stop is not a verified complete answer, even when some
@@ -150,14 +157,17 @@ class OllamaProvider(ModelProvider):
         }
         if reason == "length":
             raise ProviderError("Ollama reached the output-token limit without a complete final answer. "
-                                "Use a shorter request or review the inference profile budget.")
+                                "Use a shorter request or review the inference profile budget.", category="output_length")
+        if (self._profile is not None and self._profile.require_complete and
+                (result.get('done') is not True or reason != 'stop')):
+            raise ProviderError("Ollama did not confirm a completed final answer.", category="incomplete_output")
         if ("done" in result and result["done"] is not True) or (
                 reason not in (None, "", "stop")):
-            raise ProviderError("Ollama did not produce a completed final answer.")
+            raise ProviderError("Ollama did not produce a completed final answer.", category="incomplete_output")
         message = result.get("message")
         content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, str):
-            raise ProviderError("Ollama returned an invalid final answer.")
+            raise ProviderError("Ollama returned an invalid final answer.", category="invalid_response")
         # Intent wrappers and extra text must be rejected, not repaired into calls.
         content = content.strip() if self._intent_mode else _final_content(content)
         if not self._intent_mode and _REASONING_PREFIX.match(content):

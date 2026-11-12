@@ -33,7 +33,7 @@ class FileManagerNavigationController:
                    'retry open ubuntu files' if folder == 'home' else 'retry open ' + folder+' in ubuntu files')
         return {'status':'navigation_unsupported',
                 'message':'Same-window Files navigation is unavailable: Nautilus has no reviewed target-window navigation API. '
-                          'Safe window replacement is also unavailable: the API cannot establish which exact window FRIDAY created. No window was closed. '
+                          'Safe window replacement is also unavailable: the API cannot establish which exact window ZORVYQ created. No window was closed. '
                           'An earlier Files launch may still be open; its window and current folder cannot be verified, even if you closed it. '
                           'No navigation or new process was requested. Navigate manually in Files, or type "' + command +
                           '" for a fresh-approved launch that may create another window.'}
